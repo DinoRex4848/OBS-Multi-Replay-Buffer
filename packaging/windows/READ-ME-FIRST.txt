@@ -1,0 +1,37 @@
+OBS Multi Replay Buffer - Windows x64 development package
+
+This is developer packaging, not a published release or a validated installer.
+Native Windows OBS runtime acceptance testing is still required.
+
+Install or update
+1. Install 64-bit OBS Studio 32.1 or newer (SDK target: 32.1.1).
+2. Close OBS.
+3. Extract this entire ZIP to a folder.
+4. Double-click Install.cmd and accept Windows' administrator prompt.
+5. Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings.
+
+You do not need Visual Studio, CMake, Git, Python or a separate PowerShell
+installation. The compiled plugin, helper and runtime files are included.
+The installer works offline and does not change your OBS profiles or scenes.
+
+Portable OBS
+Use Install-Portable.cmd and choose your portable OBS folder (the folder
+containing bin\64bit\obs64.exe). The plugin stays inside that OBS folder,
+so you can move the folder afterwards. A protected folder may require
+right-clicking the launcher and choosing Run as administrator.
+
+Remove
+Close OBS and run Uninstall.cmd, or Uninstall-Portable.cmd for portable OBS.
+This removes only this plugin's files. Profiles, hotkeys and clips remain.
+
+Use
+Set the recording encoder/audio tracks in OBS's recording settings. Set
+replay lengths in Multi-Length Replay, and RAM budget/save folder/sharing
+in Multi-Buffer Settings. Start buffering, then click Save for a preset.
+Set hotkeys in OBS Settings > Hotkeys. New profiles share recording encoders,
+so recording pause also pauses replay. Enable Use separate replay encoder
+for independent replay collection, at the cost of another encode.
+
+This plugin is experimental. Native Windows OBS acceptance testing is
+still required; Linux validation is not Windows validation.
+License and dependency notices are included with the plugin data.

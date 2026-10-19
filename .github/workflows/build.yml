@@ -1,0 +1,40 @@
+name: Native builds
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  fedora:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y git gcc-c++ cmake ninja-build obs-studio-devel qt6-qtbase-devel ffmpeg-free-devel python3
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DREPLAY_INTEGRATION_TEST=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+          python3 tests/flatpak_installer_tests.py
+          python3 scripts/package-fedora.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-x86_64
+          path: dist/*.tar.gz
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test portable installer with Windows PowerShell
+        shell: powershell
+        run: ./tests/windows_installer_tests.ps1
+      - name: Build Windows SDK, plugin and helper
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            dist/*.zip
+            dist/*.sha256

@@ -1,0 +1,24 @@
+# Keeps the conventions the code already uses (two-space indent, function braces
+# on their own line, right-aligned pointers) and puts one statement on each line.
+BasedOnStyle: LLVM
+ColumnLimit: 120
+IndentWidth: 2
+AccessModifierOffset: -2
+PointerAlignment: Right
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+NamespaceIndentation: None
+FixNamespaceComments: false
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortLambdasOnASingleLine: All
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: MultiLine
+BinPackArguments: true
+BinPackParameters: BinPack
+ReflowComments: Never
+# Include order is deliberate where platform headers need macros defined first.
+SortIncludes: Never
