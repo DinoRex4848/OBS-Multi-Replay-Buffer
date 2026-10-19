@@ -60,9 +60,11 @@ try {
     Check (Test-Path -LiteralPath $ZipPath) "Installer ZIP missing"
     $Zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        Check (@($Zip.Entries | Where-Object { $_.FullName -eq "Install.cmd" }).Count -eq 1) "ZIP launcher missing"
-        Check (@($Zip.Entries | Where-Object { $_.FullName -eq "payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
-        Check (@($Zip.Entries | Where-Object { $_.FullName -eq "package.json" }).Count -eq 1) "ZIP manifest missing"
+        # Windows PowerShell's .NET Framework can use backslashes in ZIP entry
+        # names. Compare logical paths; Windows extraction accepts either form.
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "Install.cmd" }).Count -eq 1) "ZIP launcher missing"
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "package.json" }).Count -eq 1) "ZIP manifest missing"
     } finally { $Zip.Dispose() }
     Check (Test-Path -LiteralPath (Join-Path $Kit "Install.cmd")) "Launcher missing"
     $ManifestPath = Join-Path $Kit "package.json"
