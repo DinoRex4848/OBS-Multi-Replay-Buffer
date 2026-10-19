@@ -79,7 +79,7 @@ std::string replayFilename(const FilenameOptions &options, const FilenameVideo &
   // A format may create dated subdirectories, but must stay under the chosen
   // destination. Remove Windows-incompatible trailing spaces and dots too.
   auto path = std::filesystem::u8path(name);
-  if (path.is_absolute() || path.has_root_name()) throw std::runtime_error("Replay filename format must be relative");
+  if (path.has_root_path()) throw std::runtime_error("Replay filename format must be relative");
   std::filesystem::path safe;
   for (const auto &part : path) {
     std::string component = part.u8string();

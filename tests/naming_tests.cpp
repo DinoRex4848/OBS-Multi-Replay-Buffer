@@ -1,5 +1,6 @@
 #include "naming.hpp"
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 
@@ -37,7 +38,9 @@ int main()
     options.format = "%CCYY/%MM/%DD/%hh-%mm-%ss";
     options.prefix = "Clip";
     options.suffix = "game";
-    CHECK(replayFilename(options, video, time, 60) == "2026/10/12/Clip_19-30-00_game_60s");
+    // The formatter returns native filesystem paths, including Windows separators.
+    CHECK(replayFilename(options, video, time, 60) ==
+          std::filesystem::u8path("2026/10/12/Clip_19-30-00_game_60s").make_preferred().u8string());
     options.allowSpaces = true;
     options.format = "%Y-%m-%d %H-%M-%S %YY %% %UNKNOWN";
     options.prefix.clear();
@@ -46,7 +49,8 @@ int main()
     options.format = "%FPS %CRES %ORES %VF %s";
     CHECK(replayFilename(options, video, time, 1) == "59.94 3840x2160 1920x1080 NV12 " + std::to_string(time) + " 1s");
     options.format = "dir\\%CCYY_%hh:%mm?*\"|<>";
-    CHECK(replayFilename(options, video, time, 60) == "dir/2026_19_30______ 60s");
+    CHECK(replayFilename(options, video, time, 60) ==
+          std::filesystem::u8path("dir/2026_19_30______ 60s").make_preferred().u8string());
     options.format = "%CCYY/../clip";
     bool rejected = false;
     try {

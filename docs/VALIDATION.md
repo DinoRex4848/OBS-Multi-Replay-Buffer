@@ -12,7 +12,9 @@ The source uses three presets of **60/240/600 seconds**, a **6 GB decimal** RAM 
 
 On 2026-10-19, the publication source was built from a separate clean checkout using the installed OBS 32.2.2 Flatpak SDK. The production module, writer, and test executables compiled; both CTest cases (history and naming) and all five temporary Flatpak installer fixtures passed. The dependency guards rejected both old FFmpeg headers and a mismatched runtime. The Flatpak development archive was generated successfully with its hash manifest. Python syntax and shell syntax checks also passed. The media probe retains an upstream deprecation warning for `obs_add_data_path`.
 
-GPU/OBS UI acceptance from earlier development is listed separately below; those sessions were not repeated for this documentation/publication build.
+The first hosted Windows run exposed path-separator assumptions in the ZIP and filename fixtures. Those comparisons now accept the platform's path representation. Filename validation and the mux writer also reject drive-root-relative Windows paths consistently with Linux rooted paths. The Linux build/core tests were rerun, and mux tests using generated H.264/FLAC media passed rooted-path rejection, collision protection, missing directory/helper, simulated disk-full, and stalled-writer checks; the successful output fully decoded.
+
+GPU/OBS UI acceptance from earlier development is listed separately below; those sessions were not repeated for this publication.
 
 The [GitHub Actions workflow](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) provides Fedora and Windows compilation, core tests, installer fixtures, and development packaging. Hosted CI does not exercise a real Windows OBS session, desktop hotkeys, or GPU/video/audio behavior.
 

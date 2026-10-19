@@ -96,6 +96,10 @@ int main(int argc, char **argv)
     std::filesystem::create_directories(output);
     setWriterPath(std::filesystem::absolute(argv[1]));
     auto clip = original;
+    // A leading slash is drive-root-relative on Windows, not is_absolute().
+    auto rooted = writeMkv(format, clip, output, "/replay-outside-destination");
+    CHECK(rooted.error.find("must be relative") != std::string::npos);
+    clip = original;
     auto result = writeMkv(format, clip, output, "good");
     CHECK(result.error.empty());
     auto hash = checksum(result.path);

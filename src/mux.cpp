@@ -267,8 +267,7 @@ MuxResult writeMkv(const Format &format, Selection &clip, const std::filesystem:
     if (!std::filesystem::is_directory(folder))
       throw std::runtime_error("Replay destination is missing or not a directory");
     const auto relative = std::filesystem::u8path(stem);
-    if (relative.is_absolute() || relative.has_root_name())
-      throw std::runtime_error("Replay filename must be relative");
+    if (relative.has_root_path()) throw std::runtime_error("Replay filename must be relative");
     for (const auto &part : relative)
       if (part == "..") throw std::runtime_error("Replay filename cannot leave the destination folder");
     std::filesystem::create_directories(path.parent_path());

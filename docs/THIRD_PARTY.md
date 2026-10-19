@@ -2,9 +2,9 @@
 
 ## Project license
 
-OBS Multi Replay Buffer is licensed under **GNU GPL v2.0 or later**. The repository's [LICENSE](../LICENSE) contains the GPL v2 text.
+OBS Multi Replay Buffer is licensed under **GNU GPL v2.0 or later**. The repository's [LICENSE](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/blob/main/LICENSE) contains the GPL v2 text.
 
-OBS integration and recording-setting mappings were developed against OBS Studio 32.1.1 and checked for the Flatpak OBS 32.2.2 target. OBS Studio is GPL-2.0-or-later. Specific upstream implementation references are listed in [Architecture](ARCHITECTURE.md).
+OBS integration and recording-setting mappings were developed against OBS Studio 32.1.1 and checked for the Flatpak OBS 32.2.2 target. OBS Studio is GPL-2.0-or-later. Specific upstream implementation references are listed in [Architecture](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/blob/main/docs/ARCHITECTURE.md).
 
 ## Dependencies
 
