@@ -76,6 +76,13 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "exactly three"):
             release.validate_archive(path)
 
+    def test_extra_empty_root_directory_refused(self):
+        path = next(self.root.glob("*.zip"))
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr("extra/", b"")
+        with self.assertRaisesRegex(RuntimeError, "exactly three"):
+            release.validate_archive(path)
+
     def test_payload_tampering_refused(self):
         path = next(self.root.glob("*.zip"))
         replacement = self.root / "tampered.zip"

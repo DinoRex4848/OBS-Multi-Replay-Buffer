@@ -43,7 +43,12 @@ def run(args, private):
         print(f"Detected: {detected}\nInstalled: {current or ('unknown legacy version' if target.exists() else 'not installed')}")
         print(f"Action: {action} version {manifest['plugin_version']}")
     else:
-        print("Action: Remove Multi-Length Replay only")
+        current = "unknown" if target.exists() else "not installed"
+        try:
+            current = json.loads((target / "manifest.json").read_text()).get("plugin_version") or current
+        except (OSError, ValueError):
+            pass
+        print(f"Installed: {current}\nAction: Remove Multi-Length Replay only")
     print(f"Destination: {target}\nProfiles, scenes, hotkeys and recordings are preserved.")
     if not args.non_interactive and input("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
         print("Cancelled. No plugin files were changed.")

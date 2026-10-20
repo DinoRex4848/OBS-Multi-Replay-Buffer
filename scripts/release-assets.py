@@ -28,10 +28,12 @@ def validate_archive(path):
     scripts = ("Install.cmd", "Uninstall.cmd") if windows else ("install.sh", "uninstall.sh")
     expected = {*scripts, "README.txt", "PluginFiles"}
     content = {}
+    names = set()
     if windows:
         with zipfile.ZipFile(path) as archive:
             for entry in archive.infolist():
                 name = entry.filename.replace("\\", "/").rstrip("/")
+                names.add(name)
                 if stat.S_ISLNK(entry.external_attr >> 16):
                     raise RuntimeError("Links are not allowed in release archives")
                 if not entry.filename.replace("\\", "/").endswith("/"):
@@ -41,6 +43,7 @@ def validate_archive(path):
     else:
         with tarfile.open(path, "r:gz") as archive:
             for entry in archive:
+                names.add(entry.name.rstrip("/"))
                 if not (entry.isfile() or entry.isdir()):
                     raise RuntimeError("Links/special files are not allowed in release archives")
                 if entry.isfile():
@@ -49,11 +52,13 @@ def validate_archive(path):
                     content[entry.name] = archive.extractfile(entry).read()
                     if (entry.name in scripts or entry.name.endswith("/multi-replay-writer")) and not entry.mode & 0o111:
                         raise RuntimeError("Linux executable permission is missing")
-    for name in content:
+    for name in names:
         parts = pathlib.PurePosixPath(name)
         if parts.is_absolute() or ".." in parts.parts or ":" in name:
             raise RuntimeError("Unsafe archive path")
-    if {name.split("/")[0] for name in content} != expected:
+        if len(parts.parts) > 1 and parts.parts[0] != "PluginFiles":
+            raise RuntimeError("Only PluginFiles may contain nested files")
+    if {name.split("/")[0] for name in names} != expected:
         raise RuntimeError("Archive must contain exactly three files and PluginFiles")
     for name in (*scripts, "README.txt"):
         if name not in content:

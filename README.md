@@ -37,7 +37,7 @@ See [installer instructions](docs/INSTALLERS.md) for compatibility, removal, and
 | --- | --- | --- |
 | Linux x86_64, Flatpak OBS | Latest local build and runtime testing targets OBS 32.2.2 | Matching Freedesktop 25.08 SDK; OBS-provided Qt 6 and FFmpeg 8 |
 | Linux x86_64, Fedora RPM OBS | Historical runtime testing on Fedora 44 with OBS 32.1.1; Fedora build CI included | OBS/Qt development packages and FFmpeg 8 |
-| Windows x64 | MSVC build, core tests, installer fixtures, and development packaging pass in CI; native OBS runtime acceptance is still outstanding | Visual Studio 2022 and the OBS 32.1.1 SDK |
+| Windows x64 | MSVC/core tests, extracted CMD installers, EXE migration and dependency loading pass in CI; real OBS capture remains outstanding | Visual Studio 2022 and the OBS 32.1.1 SDK |
 
 The plugin checks for OBS **32.1 or newer**, but that is not a guarantee of compatibility with every newer version. NVIDIA AV1, H.264, and HEVC with SDR and multiple FLAC tracks have the strongest Linux evidence. Other platforms, encoders, and recording modes need further testing. Read the [validation summary](docs/VALIDATION.md) for what was actually exercised.
 

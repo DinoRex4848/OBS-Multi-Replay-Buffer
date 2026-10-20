@@ -106,7 +106,7 @@ The helper's FFmpeg and release MSVC runtime files are staged with it. One offli
 
 The Windows archive provides `Install.cmd` and `Uninstall.cmd`; their shared console backend is inside `PluginFiles`. Choose normal or portable OBS interactively, or pass `-Mode Standard|Portable -ObsRoot "path" -NonInteractive` for CI. Run noninteractive standard/protected operations from an elevated shell. Logs stay in `PluginFiles/Logs`. Normal installation targets `C:\ProgramData\obs-studio\plugins\obs-multi-replay`; portable installation targets the selected OBS tree. Use `tests/windows_package_tests.ps1` only on a disposable Windows builder: it installs into ProgramData and exercises the actual archived CMD launchers.
 
-Native acceptance still needs module load/unload, actual replay captures and playback, standard/portable install/update/uninstall, UAC, paths with spaces, runtime dependencies, global hotkeys, and rollback testing on Windows.
+Native package acceptance exercises install/update/repair/removal, migration from EXE support, portable relocation, paths with spaces/apostrophes/brackets, and production DLL/writer dependency loading. Interactive UAC approval/denial, protected portable folders, real OBS module lifecycle/captures/playback, and global hotkeys remain manual checks.
 
 ## Automated tests
 

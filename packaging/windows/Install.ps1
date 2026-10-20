@@ -36,7 +36,8 @@ try {
     if (!$ObsRoot -and $Mode -eq "Standard") { $ObsRoot = Find-ReplayObs }
     if (!$ObsRoot -and ($Mode -eq "Portable" -or $Action -eq "Install")) {
         if ($NonInteractive) { throw "OBS was not found. Specify -ObsRoot with the OBS root folder." }
-        $ObsRoot = (Read-Host "OBS root folder (containing bin\64bit\obs64.exe); leave empty to cancel").Trim().Trim('"')
+        $Prompt = if ($Action -eq "Install") { "OBS root folder (containing bin\64bit\obs64.exe)" } else { "Current/former portable OBS root folder" }
+        $ObsRoot = (Read-Host "$Prompt; leave empty to cancel").Trim().Trim('"')
         if (!$ObsRoot) { throw [OperationCanceledException]::new("Cancelled. No plugin files were changed.") }
     }
     if ($ObsRoot) { $ObsRoot = [IO.Path]::GetFullPath($ObsRoot); Assert-ReplaySafePath $ObsRoot }
@@ -44,6 +45,13 @@ try {
         Write-ReplayMessage (Invoke-ReplaySetup "Inspect" $Mode $ObsRoot $PSScriptRoot)
     } else {
         $Destination = if ($Mode -eq "Standard") { Join-Path $env:ProgramData "obs-studio/plugins/obs-multi-replay" } else { $ObsRoot }
+        $Receipt = if ($Mode -eq "Standard") { Join-Path $Destination "data/replay-installation.json" } else { Join-Path $ObsRoot "data/obs-plugins/obs-multi-replay/replay-installation.json" }
+        $Current = "unknown or not installed"
+        if (Test-Path -LiteralPath $Receipt) {
+            try { $Current = (Get-Content -LiteralPath $Receipt -Raw -Encoding UTF8 | ConvertFrom-Json).version }
+            catch { $Current = "unknown (damaged metadata; removal is still available)" }
+        }
+        Write-ReplayMessage "Installed version: $Current"
         Write-ReplayMessage "Remove only Multi-Length Replay from: $Destination"
     }
     if (!$NonInteractive -and !$FromUac -and (Read-Host "Continue? [y/N]") -notmatch '^(y|yes)$') {
