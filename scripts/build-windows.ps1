@@ -63,5 +63,5 @@ foreach ($Dependency in @($ObsDeps, $QtDeps)) {
     }
 }
 Write-ReplayZip $Package (Join-Path $Repo "dist/obs-multi-replay-$Version-windows-x64.zip")
-& (Join-Path $Repo "scripts/package-windows.ps1") -PackagePath $Package -Version $Version
+& (Join-Path $Repo "scripts/package-windows.ps1") -PackagePath $Package -Version $Version -BuildSetup
 Write-Host "Built Windows package. Native OBS integration acceptance tests still need to be run on Windows."

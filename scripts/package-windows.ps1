@@ -1,7 +1,9 @@
 param(
     [string]$PackagePath = "",
     [string]$OutputDirectory = "",
-    [string]$Version = ""
+    [string]$Version = "",
+    [switch]$BuildSetup,
+    [string]$Iscc = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -39,7 +41,7 @@ if (Test-Path -LiteralPath $Notices) {
     Copy-Item -LiteralPath $Notices -Destination (Join-Path $Payload "data/third-party-notices") -Recurse
 }
 foreach ($Name in @("Install.cmd", "Install-Portable.cmd", "Uninstall.cmd", "Uninstall-Portable.cmd",
-                    "Install.ps1", "Installer.Core.ps1", "READ-ME-FIRST.txt")) {
+                    "Install.ps1", "Installer.Core.ps1", "Setup.Backend.ps1", "Setup.Relaunch.ps1", "READ-ME-FIRST.txt")) {
     Copy-Item -LiteralPath (Join-Path $Templates $Name) -Destination (Join-Path $Kit $Name)
 }
 $Root = [IO.Path]::GetFullPath($Payload).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
@@ -55,4 +57,29 @@ Write-ReplayZip $Kit $Zip
 $Hash = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
 "$Hash  $(Split-Path -Leaf $Zip)" | Set-Content -LiteralPath ($Zip + ".sha256") -Encoding ASCII
 Write-Host "Created portable installer: $Zip"
-Write-Host "Development package only. Native Windows OBS and installer acceptance are still required."
+if ($BuildSetup) {
+    $NoticeText = @("Windows installer dependency notices", "", (Get-Content -LiteralPath (Join-Path $Payload "data/LICENSE") -Raw),
+                    (Get-Content -LiteralPath (Join-Path $Payload "data/THIRD_PARTY.md") -Raw))
+    $BundledNotices = Join-Path $Payload "data/third-party-notices"
+    if (Test-Path -LiteralPath $BundledNotices) {
+        foreach ($File in Get-ChildItem -LiteralPath $BundledNotices -Recurse -File | Sort-Object FullName) {
+            $NoticeText += "`r`n$($File.Name)`r`n" + (Get-Content -LiteralPath $File.FullName -Raw)
+        }
+    }
+    $NoticeText -join "`r`n" | Set-Content -LiteralPath (Join-Path $OutputDirectory "windows-installer-notices.txt") -Encoding UTF8
+    if (!$Iscc) {
+        $Compiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+        if ($Compiler) { $Iscc = $Compiler.Source }
+        else { $Iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6/ISCC.exe" }
+    }
+    if (!(Test-Path -LiteralPath $Iscc)) { throw "Install Inno Setup 6 to build the setup EXE (or pass -Iscc)." }
+    & $Iscc "/DPluginVersion=$Version" "/DKitDir=$([IO.Path]::GetFullPath($Kit))" `
+        "/DOutputDir=$([IO.Path]::GetFullPath($OutputDirectory))" (Join-Path $Templates "setup.iss")
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+    $Setup = Join-Path $OutputDirectory "obs-multi-replay-$Version-windows-x64-setup.exe"
+    Assert-ReplayWindowsBinary $Setup Exe -AllowX86
+    # Inno's bootstrap loader may be x86 even though it targets x64 OBS.
+    $Hash = (Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$Hash  $(Split-Path -Leaf $Setup)" | Set-Content -LiteralPath ($Setup + ".sha256") -Encoding ASCII
+    Write-Host "Created graphical installer: $Setup"
+}

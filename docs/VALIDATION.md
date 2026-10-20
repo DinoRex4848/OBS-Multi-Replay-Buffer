@@ -20,6 +20,12 @@ The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/
 
 The [GitHub Actions workflow](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) retains those checks for future changes. Hosted CI does not exercise a real Windows OBS session, desktop hotkeys, or GPU/video/audio behavior.
 
+## Graphical installer checks
+
+The new offline installers reuse shared transaction engines and preserve the published filename/path behavior. Local preparation passed 15 Linux engine tests, four Qt wizard/archive tests and five release-gate tests. Windows engine fixtures passed under PowerShell 7.6.6 on Linux; Inno Setup 6.7.3 compiled the setup definition against non-executable fixtures. A production Linux `.run` was built on Ubuntu 22.04 and launched on Ubuntu and Fedora, including Fedora Wayland/X11. Isolated production OBS baseline/plugin runs preserved normal configuration hashes and had the same single remaining OBS allocation at shutdown.
+
+The delivery workflow builds and tests the actual Windows EXE on Windows Server 2022 and the Linux `.run` on Ubuntu 22.04. Native acceptance covers dependency loading, standard and portable install/repair/removal, portable relocation, Installed Apps registration and configuration preservation. Linux CI covers payload verification, transaction/wizard tests and an isolated production OBS load smoke. Delivery results will be recorded after those runs complete. Interactive UAC and real Windows OBS capture are still separate manual checks.
+
 ## Flatpak OBS 32.2.2 development validation
 
 The latest local runtime work used x86_64 OBS 32.2.2, Qt 6.11.1, and FFmpeg 8.1.2 from the installed app, with Freedesktop SDK 25.08. Native codec probes used NVIDIA encoders and SDR; verification used FFmpeg to decode all selected streams.

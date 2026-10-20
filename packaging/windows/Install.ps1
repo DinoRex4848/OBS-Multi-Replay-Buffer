@@ -77,30 +77,11 @@ try {
         exit $Process.ExitCode
     }
     Assert-ReplayObsStopped
-    $Payload = Join-Path $PSScriptRoot "payload/obs-multi-replay"
+    $Message = Invoke-ReplaySetup $Action $Mode $ObsRoot $PSScriptRoot
     $Installing = $Action -eq "Install"
-    $Targets = @()
-    if ($Mode -eq "Standard") {
-        $Destination = Join-Path $env:ProgramData "obs-studio/plugins/obs-multi-replay"
-        $Targets += @{ Path = $Destination; Source = $(if ($Installing) { $Payload } else { $null }) }
-        # Remove this plugin's old direct-to-OBS installation in the same
-        # transaction, so OBS cannot load two copies after an update.
-        if ($ObsRoot) {
-            $Targets += @{ Path = (Join-Path $ObsRoot "obs-plugins/64bit/obs-multi-replay.dll"); Source = $null }
-            $Targets += @{ Path = (Join-Path $ObsRoot "data/obs-plugins/obs-multi-replay"); Source = $null }
-        }
-    } else {
-        # OBS 32.1.1 skips ProgramData plugins in portable mode. Use its native
-        # relative module/data paths so the OBS folder can be moved afterwards.
-        $Destination = $ObsRoot
-        $Targets += @{ Path = (Join-Path $ObsRoot "obs-plugins/64bit/obs-multi-replay.dll");
-                       Source = $(if ($Installing) { Join-Path $Payload "bin/64bit/obs-multi-replay.dll" } else { $null }) }
-        $Targets += @{ Path = (Join-Path $ObsRoot "data/obs-plugins/obs-multi-replay");
-                       Source = $(if ($Installing) { Join-Path $Payload "data" } else { $null }) }
-    }
-    Set-ReplayInstallTargets $Targets
+    Write-Host $Message
     if ($Installing) {
-        Write-Host "Installed version $($Package.version) to $Destination"
+        Write-Host "Installed version $($Package.version) "
         Write-Host "Restart OBS, then open Docks > Multi-Length Replay and Multi-Buffer Settings."
         Write-Host "Assign replay shortcuts in OBS Settings > Hotkeys."
     } else {

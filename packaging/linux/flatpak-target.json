@@ -1,0 +1,8 @@
+{
+  "app_id": "com.obsproject.Studio",
+  "branch": "stable",
+  "architecture": "x86_64",
+  "obs_version": "32.2.2",
+  "app_commit": "21b35765922fb5c8b92ccdccedc0d8ca709b12f86a961780350199082da822ef",
+  "sdk": "org.freedesktop.Sdk/x86_64/25.08"
+}

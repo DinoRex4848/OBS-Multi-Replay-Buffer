@@ -3,9 +3,9 @@
 Save several replay lengths from one encoded memory buffer in OBS Studio, with a separate save button and hotkey for each preset.
 
 [![Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml/badge.svg)](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml)
-[User guide](docs/USER_GUIDE.md) · [Build from source](docs/DEVELOPMENT.md) · [Validation and limitations](docs/VALIDATION.md) · [Changelog](CHANGELOG.md)
+[Installer instructions](docs/INSTALLERS.md) · [User guide](docs/USER_GUIDE.md) · [Build from source](docs/DEVELOPMENT.md) · [Validation and limitations](docs/VALIDATION.md) · [Changelog](CHANGELOG.md)
 
-**Experimental — source code only.** There is no published release or ready-to-use installer yet. Build and packaging scripts are included for developers; files generated locally or by CI are development artifacts, not supported releases. The source currently identifies itself as version `0.1.0`.
+**Experimental — testing installers.** No release has been published. Graphical Windows EXE and Linux Flatpak `.run` installers are built by GitHub Actions for testing; version `0.1.0` remains experimental. Release automation prepares an unpublished draft with verified downloads.
 
 <p align="center">
   <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three preset save buttons, Start Buffering, and Settings" width="360">
@@ -22,6 +22,12 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 - Use OBS's recording folder, one shared destination, or a separate folder for each preset.
 - Set a replay RAM budget, see live diagnostics, and save clearly labeled partial clips while the buffer warms up or under memory pressure.
 - Use OBS's filename format and replay prefix/suffix, with collision handling that preserves existing files.
+
+## Install or update
+
+Download the Windows x64 setup EXE or Linux Flatpak x86_64 `.run` from a successful [Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) run. Both installers work offline and handle Install, Update, Repair, and removal while preserving OBS settings, hotkeys and recordings. Close OBS first.
+
+The Windows wizard supports normal and portable OBS. On Linux, enable executable permission on the `.run`; it targets Flatpak OBS only and requires the exact OBS commit recorded in its accompanying `linux-build.json`. See [installer instructions](docs/INSTALLERS.md) for compatibility, removal, and building. The Windows EXE is unsigned. Draft release assets are available to the repository owner until published.
 
 ## Current platform status
 

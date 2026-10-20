@@ -37,6 +37,8 @@ try {
     $Scripts = @(Get-ChildItem -LiteralPath (Join-Path $Repo "packaging/windows") -Filter *.ps1)
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/package-windows.ps1")
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/build-windows.ps1")
+    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/install-inno-ci.ps1")
+    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "tests/windows_setup_tests.ps1")
     foreach ($Script in $Scripts) {
         $Tokens = $null; $Errors = $null
         [Management.Automation.Language.Parser]::ParseFile($Script.FullName, [ref]$Tokens, [ref]$Errors) | Out-Null
@@ -60,8 +62,7 @@ try {
     Check (Test-Path -LiteralPath $ZipPath) "Installer ZIP missing"
     $Zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        # Windows PowerShell's .NET Framework can use backslashes in ZIP entry
-        # names. Compare logical paths; Windows extraction accepts either form.
+        # Windows PowerShell may use backslashes in ZIP entries; compare logical paths.
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "Install.cmd" }).Count -eq 1) "ZIP launcher missing"
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "package.json" }).Count -eq 1) "ZIP manifest missing"
@@ -125,6 +126,25 @@ try {
     Remove-Item Function:\Move-Item
     Check ((Get-FileHash -LiteralPath $PortableDll).Hash -eq $OldHash) "Rollback lost the old DLL"
     Check ([IO.File]::ReadAllText((Join-Path $PortableData "old.txt")) -eq "previous install") "Rollback lost old helper data"
+    $Status = Get-ReplayInstallation $Portable "Portable" "0.1.0"
+    Check ($Status.action -eq "Update") "Legacy install was not detected"
+    $Receipt = Join-Path $PortableData "replay-installation.json"
+    [IO.File]::WriteAllText($Receipt, '{"version":"0.1.0","mode":"Portable"}')
+    Check ((Get-ReplayInstallation $Portable "Portable" "0.1.0").action -eq "Repair") "Same version should repair"
+    Check ((Get-ReplayInstallation $Portable "Portable" "0.2.0").action -eq "Update") "New version should update"
+    Expect-Failure { Get-ReplayInstallation $Portable "Portable" "0.0.9" } "Downgrading"
+    # Simulate a process being terminated between two publication renames.
+    $Id = [Guid]::NewGuid().ToString("N")
+    $Previous = Join-Path (Split-Path -Parent $PortableDll) ".obs-multi-replay-backup-$Id"
+    $Staged = Join-Path (Split-Path -Parent $PortableDll) ".obs-multi-replay-stage-$Id"
+    Move-Item -LiteralPath $PortableDll -Destination $Previous
+    [IO.File]::WriteAllText($PortableDll, "interrupted replacement")
+    $Journal = Join-Path $Portable ".obs-multi-replay-transaction.json"
+    Write-ReplayJournal $Journal @{ committed = $false; entries = @(@{ Path = $PortableDll;
+        Stage = $Staged; Backup = $Previous; HadOriginal = $true; HasSource = $true }) }
+    Restore-ReplayTransaction $Journal $Targets
+    Check ((Get-FileHash -LiteralPath $PortableDll).Hash -eq $OldHash) "Interrupted publication did not recover"
+    Check (!(Test-Path -LiteralPath $Journal)) "Recovery journal was not cleared"
     function Get-Process { param($Name, $ErrorAction) [PSCustomObject]@{ Name = "obs64" } }
     Expect-Failure { Assert-ReplayObsStopped } "Close OBS"
     Remove-Item Function:\Get-Process
@@ -134,6 +154,9 @@ try {
     Check (!(Test-Path -LiteralPath $PortableDll)) "Uninstall left the portable DLL"
     Check ([IO.File]::ReadAllText($Profile) -eq "DO NOT CHANGE PROFILE") "Profile changed"
     Check ([IO.File]::ReadAllText($Other) -eq "DO NOT CHANGE OTHER PLUGIN") "Other plugin changed"
+    $MissingObs = Join-Path $Temp "removed OBS"
+    Set-ReplayInstallTargets @(@{ Path = (Join-Path $MissingObs "obs-plugins/64bit/obs-multi-replay.dll"); Source = $null })
+    Check (!(Test-Path -LiteralPath $MissingObs)) "Uninstall recreated a removed OBS folder"
     Check (@(Get-ChildItem -LiteralPath $Temp -Recurse -Force | Where-Object { $_.Name -match '^\.obs-multi-replay-(stage|backup)-' }).Count -eq 0) "Temporary install files remain"
     Write-Host "PASS: script parsing, fixture ZIP/manifests, install/update/uninstall, portable layout, rollback, path quoting, corruption/x86 rejection, running OBS guard and profile preservation"
 } finally {

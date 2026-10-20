@@ -4,6 +4,8 @@
 
 Initial public source snapshot. The build metadata remains `0.1.0`; no release has been published.
 
+- Offline graphical Windows EXE and Linux Flatpak `.run` installers with upgrade, repair, removal, version guards, and transactional recovery.
+- Native compiled-installer checks, Linux wizard tests, and checksum-gated draft prereleases.
 - Three configurable replay presets backed by one encoded RAM history.
 - Shared recording encoders by default, with an option for separate replay encoding.
 - Native OBS replay dock, per-preset hotkeys, and a separate Settings/Diagnostics window.
