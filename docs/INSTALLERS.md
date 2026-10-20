@@ -60,6 +60,6 @@ The builder needs `libpython3.10`, `binutils` and the Qt desktop libraries liste
 
 The build workflow runs engine tests, Qt wizard tests, Windows EXE acceptance tests and an isolated production OBS Flatpak load smoke. Installers and notices are downloadable workflow artifacts even without a release.
 
-A pushed `vVERSION` tag must match CMake. After all platform jobs pass, automation verifies both installer checksums and creates a **draft prerelease**. Reruns may update that draft; an already published release is never modified. Review the draft, native Windows/UAC results and remaining checks in `VALIDATION.md` before publishing it. Implementation does not push tags or publish releases.
+A pushed `vVERSION` tag must match CMake. After all platform jobs pass, automation verifies both installer checksums and creates a **draft prerelease**. Reruns may update that draft; an already published release is never modified. Review the draft, native Windows/UAC results and remaining checks in `VALIDATION.md` before publishing it. Creating a testing draft requires an explicitly pushed tag; publishing that draft remains a separate step.
 
 The installer framework and bundled runtime licenses accompany the assets. Plugin runtime dependencies and source locations are described in `THIRD_PARTY.md`.

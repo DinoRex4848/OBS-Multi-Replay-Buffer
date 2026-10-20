@@ -80,6 +80,25 @@ public static class ReplayDllProbe {
     Check ($Handle -ne [IntPtr]::Zero) "The production plugin's DLL imports did not resolve"
     [ReplayDllProbe]::FreeLibrary($Handle) | Out-Null
     [ReplayDllProbe]::SetDllDirectory($null) | Out-Null
+    # Launch the installed writer with EOF input to prove its bundled imports resolve.
+    $WriterInfo = New-Object Diagnostics.ProcessStartInfo
+    $WriterInfo.FileName = Join-Path $Data "multi-replay-writer.exe"
+    $WriterInfo.WorkingDirectory = $Data
+    $WriterInfo.UseShellExecute = $false
+    $WriterInfo.CreateNoWindow = $true
+    $WriterInfo.RedirectStandardInput = $true
+    $WriterInfo.RedirectStandardError = $true
+    $WriterInfo.EnvironmentVariables["PATH"] = Join-Path $env:WINDIR "System32"
+    $Writer = [Diagnostics.Process]::Start($WriterInfo)
+    try {
+        $Writer.StandardInput.Close()
+        Check ($Writer.WaitForExit(15000)) "Installed writer did not exit after EOF"
+        $WriterError = $Writer.StandardError.ReadToEnd()
+        Check ($Writer.ExitCode -eq 1 -and $WriterError.Contains("Truncated writer input")) "Installed writer's dependencies did not resolve: $WriterError"
+    } finally {
+        if (!$Writer.HasExited) { $Writer.Kill(); $Writer.WaitForExit() }
+        $Writer.Dispose()
+    }
     if ($SmokeObs) {
         $Process = Start-Process (Join-Path $Obs "bin/64bit/obs64.exe") -WorkingDirectory (Join-Path $Obs "bin/64bit") `
             -ArgumentList '--portable --multi --disable-updater --disable-shutdown-check --disable-missing-files-check' -PassThru
