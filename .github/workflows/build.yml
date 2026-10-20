@@ -49,6 +49,11 @@ jobs:
         shell: powershell
         run: ./tests/windows_setup_tests.ps1
       - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-setup-diagnostics
+          path: build-windows-setup-logs/*
+      - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
           if-no-files-found: error

@@ -12,22 +12,44 @@ $DiscoveryKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS S
 $DiscoveryKeyCreated = $false
 if (Test-Path -LiteralPath $Standard) { throw "Use a disposable builder without an existing replay plugin" }
 function Check([bool]$Condition, [string]$Message) { if (!$Condition) { throw $Message } }
+$script:SetupAttempt = 0
+$Logs = Join-Path $Repo "build-windows-setup-logs"
+[IO.Directory]::CreateDirectory($Logs) | Out-Null
+function Wait-Installer([Diagnostics.Process]$Process, [string]$Log) {
+    if (!$Process.WaitForExit(120000)) {
+        $Process.Kill()
+        if (Test-Path -LiteralPath $Log) { Get-Content -LiteralPath $Log -Tail 60 | Write-Host }
+        throw "Installer timed out; see $Log"
+    }
+    if ($Process.ExitCode -ne 0) {
+        if (Test-Path -LiteralPath $Log) { Get-Content -LiteralPath $Log -Tail 60 | Write-Host }
+        throw "Installer failed with exit code $($Process.ExitCode); see $Log"
+    }
+}
 function Run-Setup([string]$Mode, [string]$Root) {
     $Arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MODE=' + $Mode
     if ($Root) { $Arguments += ' /OBSROOT="' + $Root + '"' }
     if ($Mode -eq "Standard") { $Arguments += ' /ALLUSERS' }
-    $Process = Start-Process $SetupPath -ArgumentList $Arguments -Wait -PassThru
-    Check ($Process.ExitCode -eq 0) "Setup failed with exit code $($Process.ExitCode)"
+    $script:SetupAttempt++
+    $Log = Join-Path $Logs "setup-$script:SetupAttempt.log"
+    $Arguments += ' /LOG="' + $Log + '"'
+    $Process = Start-Process $SetupPath -ArgumentList $Arguments -PassThru
+    Wait-Installer $Process $Log
 }
 function Run-Remove([string]$Uninstaller) {
-    $Process = Start-Process $Uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
-    Check ($Process.ExitCode -eq 0) "Uninstall failed with exit code $($Process.ExitCode)"
+    $script:SetupAttempt++
+    $Log = Join-Path $Logs "remove-$script:SetupAttempt.log"
+    $Process = Start-Process $Uninstaller -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="' + $Log + '"') -PassThru
+    Wait-Installer $Process $Log
 }
 try {
     New-Item -ItemType Directory -Path $Scratch | Out-Null
     $Zip = Join-Path $Scratch "obs.zip"
-    Invoke-WebRequest "https://github.com/obsproject/obs-studio/releases/download/32.1.1/OBS-Studio-32.1.1-Windows-x64.zip" -OutFile $Zip
-    Check ((Get-FileHash $Zip -Algorithm SHA256).Hash -eq "a4cc40a06d5a5dc158c792631b596a04b02d8fe99644a0f0bc3b12199dbce011") "OBS runtime checksum mismatch"
+    # WebClient uses a literal filename; Windows PowerShell OutFile treats brackets as wildcards.
+    $Client = New-Object Net.WebClient
+    try { $Client.DownloadFile("https://github.com/obsproject/obs-studio/releases/download/32.1.1/OBS-Studio-32.1.1-Windows-x64.zip", $Zip) }
+    finally { $Client.Dispose() }
+    Check ((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash -eq "a4cc40a06d5a5dc158c792631b596a04b02d8fe99644a0f0bc3b12199dbce011") "OBS runtime checksum mismatch"
     $Obs = Join-Path $Scratch "portable OBS"
     Expand-Archive -LiteralPath $Zip -DestinationPath $Obs
     [IO.File]::WriteAllText((Join-Path $Obs "portable_mode.txt"), "")

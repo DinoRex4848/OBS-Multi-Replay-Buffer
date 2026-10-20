@@ -158,7 +158,7 @@ begin
   ExtractKit;
   Result := RunBackend('Inspect', GetMode(''), GetObsRoot(''), ExpandConstant('{tmp}'), ExpandConstant('{tmp}'), Summary);
   if not Result then begin
-    MsgBox(Summary, mbError, MB_OK);
+    SuppressibleMsgBox(Summary, mbError, MB_OK, IDOK);
     exit;
   end;
   NeedsAdmin := not IsPortable;
@@ -176,7 +176,7 @@ begin
     if Exec(PowerShell, Params, '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0) then begin
       Relaunched := True;
       WizardForm.Close;
-    end else MsgBox('Administrator access was not granted or setup could not finish.', mbError, MB_OK);
+    end else SuppressibleMsgBox('Administrator access was not granted or setup could not finish.', mbError, MB_OK, IDOK);
     Result := False;
   end;
   WizardForm.DirEdit.Text := GetSupportDir('');
@@ -217,12 +217,12 @@ begin
   SupportDir := ExtractFileDir(ExpandConstant('{uninstallexe}'));
   Mode := GetIniString('Setup', 'Mode', '', SupportDir + '\installation.ini');
   Result := (Mode = 'Portable') or (Mode = 'Standard');
-  if not Result then MsgBox('Installation metadata is missing. Rerun setup to repair before removing the plugin.', mbError, MB_OK);
+  if not Result then SuppressibleMsgBox('Installation metadata is missing. Rerun setup to repair before removing the plugin.', mbError, MB_OK, IDOK);
   if not Result then exit;
   if Mode = 'Portable' then Root := ExtractFileDir(RemoveBackslash(SupportDir))
   else Root := GetIniString('Setup', 'ObsRoot', '', SupportDir + '\installation.ini');
   Result := RunBackend('CheckRemove', Mode, Root, SupportDir, SupportDir, Message);
-  if not Result then MsgBox(Message, mbError, MB_OK);
+  if not Result then SuppressibleMsgBox(Message, mbError, MB_OK, IDOK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
