@@ -102,7 +102,7 @@ Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK,
 
 The script obtains OBS 32.1.1 source and its pinned Windows/Qt dependencies, builds an OBS SDK, builds the plugin/helper, runs CTest, and creates development ZIPs under `dist/`. Downloads require internet access. `-ObsSource` and `-Sdk` can point to existing compatible development trees; the matching dependency archives must still be present in the OBS source tree.
 
-The helper's FFmpeg and release MSVC runtime files are staged with it. A manual-layout ZIP and a portable-installer development ZIP are produced. Their existence or a successful CI build is not native Windows OBS acceptance.
+The helper's FFmpeg and release MSVC runtime files are staged with it. A manual-layout ZIP and a portable-installer development ZIP are produced. The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/39344761328) passed the MSVC build, core tests, installer fixtures, and packaging. Those checks are not native Windows OBS acceptance.
 
 The installer source under `packaging/windows/` provides `Install.cmd`/`Uninstall.cmd` for a normal installation and `Install-Portable.cmd`/`Uninstall-Portable.cmd` for portable OBS. These launchers require a compiled, packaged payload. They are not an installer download supplied by this source repository. Normal installation targets `C:\ProgramData\obs-studio\plugins\obs-multi-replay`; portable installation targets the selected OBS tree. Close OBS before testing either path and follow the package's development README.
 

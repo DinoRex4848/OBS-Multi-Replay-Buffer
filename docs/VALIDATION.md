@@ -16,7 +16,9 @@ The first hosted Windows run exposed path-separator assumptions in the ZIP and f
 
 GPU/OBS UI acceptance from earlier development is listed separately below; those sessions were not repeated for this publication.
 
-The [GitHub Actions workflow](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) provides Fedora and Windows compilation, core tests, installer fixtures, and development packaging. Hosted CI does not exercise a real Windows OBS session, desktop hotkeys, or GPU/video/audio behavior.
+The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/39344761328) passed for both Fedora and Windows on source commit `fee9324`. Fedora compiled the plugin/helper, passed history/naming and Flatpak installer fixtures, and packaged its development archive. Windows compiled the plugin/helper with MSVC against the OBS 32.1.1 SDK, passed history/naming and Windows PowerShell installer fixtures, and generated both development ZIP layouts. The follow-up commit only records these results in documentation.
+
+The [GitHub Actions workflow](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) retains those checks for future changes. Hosted CI does not exercise a real Windows OBS session, desktop hotkeys, or GPU/video/audio behavior.
 
 ## Flatpak OBS 32.2.2 development validation
 
@@ -55,7 +57,7 @@ The final publication source contains later Flatpak/UI work. Historical Fedora r
 
 Earlier development cross-compiled the code with MinGW-w64. The writer, core tests, and mux tests were partly exercised under Wine, including child-process/pipes, stall handling, exclusive file creation, and no-overwrite publication. Later UI changes received Windows-target syntax checks.
 
-MinGW/Wine results do not establish an MSVC build or native Windows OBS runtime behavior. The Windows build/CI path must be assessed separately, and a passing build still leaves real OBS load/capture and installer acceptance outstanding. Installer filesystem fixtures use synthetic payloads and are not actual plugin-load tests.
+The older MinGW/Wine results alone do not establish an MSVC build or native Windows OBS runtime behavior. The publication CI above now establishes the MSVC build, core tests, installer fixtures, and packaging. Real OBS load/capture and installer acceptance remain outstanding. Installer filesystem fixtures use synthetic payloads and are not actual plugin-load tests.
 
 ## Remaining validation
 
