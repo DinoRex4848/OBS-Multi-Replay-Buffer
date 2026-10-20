@@ -165,13 +165,6 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Installed commit"):
                 installer.check_target(metadata)
 
-    def test_host_environment_sanitized(self):
-        with mock.patch.dict(os.environ, {"LD_LIBRARY_PATH": "/frozen", "LD_LIBRARY_PATH_ORIG": "/original",
-                                          "QT_PLUGIN_PATH": "/frozen/qt"}):
-            env = installer.host_environment()
-            self.assertEqual(env["LD_LIBRARY_PATH"], "/original")
-            self.assertNotIn("QT_PLUGIN_PATH", env)
-
     def test_staging_permission_failure_preserves_installation(self):
         with mock.patch.object(installer.shutil, "copytree", side_effect=PermissionError("denied")):
             with self.assertRaises(PermissionError):

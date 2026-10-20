@@ -94,7 +94,7 @@ It installs under `~/.config/obs-studio/plugins/obs-multi-replay/`, using the sa
 
 ## Windows x64
 
-Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK, Git, CMake 3.28 or newer, and Inno Setup 6.7.3. Run from the repository root in PowerShell:
+Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK, Git, CMake 3.28 or newer. Run from the repository root in PowerShell:
 
 ```powershell
 ./scripts/build-windows.ps1
@@ -102,9 +102,9 @@ Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK,
 
 The script obtains OBS 32.1.1 source and its pinned Windows/Qt dependencies, builds an OBS SDK, builds the plugin/helper, runs CTest, and creates a setup EXE and development ZIPs under `dist/`. Downloads require internet access. `-ObsSource` and `-Sdk` can point to existing compatible development trees; the matching dependency archives must still be present in the OBS source tree.
 
-The helper's FFmpeg and release MSVC runtime files are staged with it. An offline graphical EXE, a manual-layout ZIP and a portable-installer development ZIP are produced. The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/39344761328) passed the MSVC build, core tests, installer fixtures, and packaging. Those checks are not native Windows OBS acceptance.
+The helper's FFmpeg and release MSVC runtime files are staged with it. One offline script-installer ZIP is produced, with three top-level files and `PluginFiles`. The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/39344761328) passed the MSVC build, core tests, installer fixtures, and packaging. Those checks are not native Windows OBS acceptance.
 
-The installer source under `packaging/windows/` provides `Install.cmd`/`Uninstall.cmd` for a normal installation and `Install-Portable.cmd`/`Uninstall-Portable.cmd` for portable OBS. These launchers require a compiled, packaged payload. They are not an installer download supplied by this source repository. Normal installation targets `C:\ProgramData\obs-studio\plugins\obs-multi-replay`; portable installation targets the selected OBS tree. Close OBS before testing either path and follow the package's development README.
+The Windows archive provides `Install.cmd` and `Uninstall.cmd`; their shared console backend is inside `PluginFiles`. Choose normal or portable OBS interactively, or pass `-Mode Standard|Portable -ObsRoot "path" -NonInteractive` for CI. Run noninteractive standard/protected operations from an elevated shell. Logs stay in `PluginFiles/Logs`. Normal installation targets `C:\ProgramData\obs-studio\plugins\obs-multi-replay`; portable installation targets the selected OBS tree. Use `tests/windows_package_tests.ps1` only on a disposable Windows builder: it installs into ProgramData and exercises the actual archived CMD launchers.
 
 Native acceptance still needs module load/unload, actual replay captures and playback, standard/portable install/update/uninstall, UAC, paths with spaces, runtime dependencies, global hotkeys, and rollback testing on Windows.
 
@@ -200,6 +200,8 @@ python3 scripts/package-source.py
 
 It creates ZIP/tar source snapshots, a Git bundle, and checksums. It includes non-ignored uncommitted files and the checkout's history, so inspect those before sharing a source package. It does not alter the source checkout's branch or index. A downloaded GitHub source ZIP has no Git history; clone the repository to use this script.
 
-[Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) runs on pushes, pull requests, and manual dispatch. Fedora builds the plugin/helper, runs CTest and installer fixtures, and packages a development archive. Windows runs installer fixtures, builds against the OBS SDK, runs CTest, and stages development ZIPs. The Windows job also compiles the Inno Setup EXE and runs native installation/repair/removal checks. A Linux Ubuntu 22.04 job builds and tests the standalone Qt `.run` against the pinned OBS Flatpak target. Version tags matching CMake prepare an unpublished draft prerelease with both verified installers and notices. Interactive UAC and hardware capture remain manual checks.
+[Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) retains Fedora/MSVC core builds and fixture checks. Windows also tests the extracted CMD package against an official checksum-pinned OBS runtime, including actual DLL/writer loading, EXE migration, relocation, cancellation, corrupted payload refusal and removal without OBS/payload. Linux runs transaction/package tests on Fedora and Ubuntu; Ubuntu builds the production archive against the pinned Flatpak SDK and tests shell install/repair/removal with isolated user files, followed by an isolated OBS load/shutdown smoke.
 
-Use the repository's `.clang-format` for C++ changes; the existing formatting was generated with clang-format 23. Keep changes focused and include relevant test results when contributing. Document which checks are synthetic, build-only, or real OBS runtime tests.
+Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. `bash scripts/build-flatpak.sh` produces the payload and four-entry tar archive. `python3 scripts/package_linux.py` repackages an existing validated payload. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
+
+Version tags matching CMake create unpublished draft prereleases with both archives, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks.

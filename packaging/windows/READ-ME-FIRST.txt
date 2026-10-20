@@ -1,37 +1,28 @@
-OBS Multi Replay Buffer - Windows x64 development package
+OBS Multi-Length Replay - Windows x64
 
-This is developer packaging, not a published release or a validated installer.
-Native Windows OBS runtime acceptance testing is still required.
+1. Close OBS and extract this entire ZIP into a writable folder.
+2. Double-click Install.cmd. Choose normal or portable OBS, then confirm.
+3. Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings.
 
-Install or update
-1. Install 64-bit OBS Studio 32.1 or newer (SDK target: 32.1.1).
-2. Close OBS.
-3. Extract this entire ZIP to a folder.
-4. Double-click Install.cmd and accept Windows' administrator prompt.
-5. Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings.
+Run Install.cmd again to update or repair. Run Uninstall.cmd to remove only
+this plugin. Keep the package for removal, or use a newer package's uninstaller.
+Normal installs request administrator permission and use ProgramData. Portable
+installs stay in the OBS folder and need elevation only for protected folders.
+OBS x64 32.1 or newer is required; the tested Windows target is OBS 32.1.1.
+No Python, compiler, or SDK is required. Built-in Windows PowerShell is used.
 
-You do not need Visual Studio, CMake, Git, Python or a separate PowerShell
-installation. The compiled plugin, helper and runtime files are included.
-The installer works offline and does not change your OBS profiles or scenes.
+Advanced / CI (from Command Prompt):
+Install.cmd -Mode Standard -NonInteractive
+Install.cmd -Mode Portable -ObsRoot "D:\Portable OBS" -NonInteractive
+Uninstall.cmd -Mode Portable -ObsRoot "D:\Moved OBS" -NonInteractive
+Noninteractive mode never prompts for administrator access: run it elevated
+when the target requires it. No system execution-policy settings are changed.
 
-Portable OBS
-Use Install-Portable.cmd and choose your portable OBS folder (the folder
-containing bin\64bit\obs64.exe). The plugin stays inside that OBS folder,
-so you can move the folder afterwards. A protected folder may require
-right-clicking the launcher and choosing Run as administrator.
-
-Remove
-Close OBS and run Uninstall.cmd, or Uninstall-Portable.cmd for portable OBS.
-This removes only this plugin's files. Profiles, hotkeys and clips remain.
-
-Use
-Set the recording encoder/audio tracks in OBS's recording settings. Set
-replay lengths in Multi-Length Replay, and RAM budget/save folder/sharing
-in Multi-Buffer Settings. Start buffering, then click Save for a preset.
-Set hotkeys in OBS Settings > Hotkeys. New profiles share recording encoders,
-so recording pause also pauses replay. Enable Use separate replay encoder
-for independent replay collection, at the cost of another encode.
-
-This plugin is experimental. Native Windows OBS acceptance testing is
-still required; Linux validation is not Windows validation.
-License and dependency notices are included with the plugin data.
+Profiles, scenes, settings, hotkeys and recordings are preserved. OBS must be
+closed. Older script/EXE installs are supported. Recognized old EXE support
+files are retired after success; do not run a retained old EXE uninstaller.
+Logs are in PluginFiles/Logs. If something fails, send the error and that log.
+All binaries, engines, manifests, licenses and documentation are in PluginFiles.
+The writer EXE and runtime DLLs inside that folder are required plugin files.
+This plugin is experimental. Real capture and interactive UAC testing remain
+separate from automated installer/dependency checks.

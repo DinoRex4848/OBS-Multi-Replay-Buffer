@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Developer CLI for the same engine used by the graphical Flatpak installer."""
+"""Developer CLI for the same engine used by the script-based Flatpak installer."""
 import pathlib
 import sys
 

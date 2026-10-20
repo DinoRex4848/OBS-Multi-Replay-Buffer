@@ -7,7 +7,6 @@ import pathlib
 import re
 import shutil
 import subprocess
-import tarfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 APP = "com.obsproject.Studio"
@@ -79,11 +78,9 @@ def package(build):
     if payload.exists():
         shutil.rmtree(payload)
     stage.rename(payload)
-    archive = REPO / f"dist/obs-multi-replay-{version}-obs{details['obs_version']}-flatpak-x86_64.tar.gz"
-    with tarfile.open(archive, "w:gz") as output:
-        output.add(payload, arcname="obs-multi-replay")
-    archive.with_suffix(archive.suffix + ".sha256").write_text(f"{digest(archive)}  {archive.name}\n")
-    print(archive)
+    from package_linux import package_scripts
+    print(package_scripts(payload, REPO / "dist"))
+
 
 
 if __name__ == "__main__":

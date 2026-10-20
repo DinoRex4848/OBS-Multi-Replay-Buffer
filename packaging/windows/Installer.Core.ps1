@@ -12,7 +12,7 @@ function Write-ReplayZip {
 }
 
 function Assert-ReplayWindowsBinary {
-    param([string]$Path, [ValidateSet("Dll", "Exe")][string]$Kind, [switch]$AllowX86)
+    param([string]$Path, [ValidateSet("Dll", "Exe")][string]$Kind)
     $Stream = [IO.File]::OpenRead($Path)
     $Reader = New-Object IO.BinaryReader($Stream)
     try {
@@ -23,7 +23,7 @@ function Assert-ReplayWindowsBinary {
         $Stream.Position = $Header
         $Signature = $Reader.ReadUInt32()
         $Machine = $Reader.ReadUInt16()
-        if ($Signature -ne 0x4550 -or ($Machine -ne 0x8664 -and !($AllowX86 -and $Machine -eq 0x14c))) {
+        if ($Signature -ne 0x4550 -or $Machine -ne 0x8664) {
             throw "A Windows x64 binary is required: $Path"
         }
         $Stream.Position = $Header + 22
@@ -243,7 +243,6 @@ function Invoke-ReplaySetup {
         try { $Acquired = $Mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $Acquired = $true }
         if (!$Acquired) { throw "Another plugin installer is already running" }
         Assert-ReplayObsStopped
-        if ($Action -eq "CheckRemove") { return "Ready to remove the plugin" }
         if (!$ObsRoot -and $Mode -eq "Standard") { $ObsRoot = Find-ReplayObs }
         $Installing = $Action -ne "Uninstall"
         if ($Installing) {
@@ -284,10 +283,65 @@ function Invoke-ReplaySetup {
             $Journal = Join-Path $ObsRoot ".obs-multi-replay-transaction.json"
         }
         Set-ReplayInstallTargets $Targets $Journal
+        try { Remove-ReplayLegacySetup $Mode $ObsRoot }
+        catch { throw "Plugin files were changed successfully, but old installer cleanup failed. Do not run the old uninstaller. $($_.Exception.Message)" }
         return "Complete. Your OBS settings, hotkeys and recordings are preserved."
     } finally {
         if ($Temporary -and (Test-Path -LiteralPath $Temporary)) { Remove-Item -LiteralPath $Temporary -Recurse -Force }
         if ($Acquired) { $Mutex.ReleaseMutex() }
         $Mutex.Dispose()
+    }
+}
+
+function Test-ReplayWritablePath {
+    param([string]$Path)
+    Assert-ReplaySafePath $Path
+    $Parent = [IO.Path]::GetFullPath($Path)
+    while (!(Test-Path -LiteralPath $Parent -PathType Container)) { $Parent = Split-Path -Parent $Parent }
+    $Probe = Join-Path $Parent (".obs-replay-permission-" + [Guid]::NewGuid().ToString("N"))
+    try { [IO.File]::WriteAllText($Probe, ""); return $true }
+    catch [UnauthorizedAccessException] { return $false }
+    catch [IO.IOException] { return $false }
+    finally { if (Test-Path -LiteralPath $Probe) { Remove-Item -LiteralPath $Probe -Force } }
+}
+
+function Remove-ReplayLegacySetup {
+    param([string]$Mode, [string]$ObsRoot)
+    # Never execute the obsolete uninstaller: it would remove the new payload.
+    if ($Mode -eq "Standard") { $Support = Join-Path $env:ProgramFiles "OBS Multi-Length Replay" }
+    else { $Support = Join-Path $ObsRoot "obs-multi-replay-setup" }
+    Assert-ReplaySafePath $Support
+    $Owned = $false
+    $Ini = Join-Path $Support "installation.ini"
+    if (Test-Path -LiteralPath $Ini) {
+        $Text = Get-Content -LiteralPath $Ini -Raw
+        $Owned = $Text -match ('(?im)^Mode=' + [regex]::Escape($Mode) + '\s*$') -and $Text -match '(?im)^\[Setup\]\s*$'
+    }
+    $Key = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS-Multi-Length-Replay_is1"
+    $RegistrationOwned = $false
+    if ($Mode -eq "Standard" -and $env:OS -eq "Windows_NT" -and (Test-Path -LiteralPath $Key)) {
+        $Item = Get-ItemProperty -LiteralPath $Key
+        if ($Item.PSObject.Properties['DisplayName'] -and $Item.PSObject.Properties['UninstallString']) {
+            $Expected = Join-Path $Support "unins000.exe"
+            $RegistrationOwned = $Item.DisplayName -eq "OBS Multi-Length Replay" -and $Item.UninstallString.Trim('"') -eq $Expected
+        }
+        if ($RegistrationOwned) { $Owned = $true }
+        else { Write-Warning "Unrecognized old uninstall registration retained: $Key" }
+    }
+    if ((Test-Path -LiteralPath $Support) -and !$Owned) {
+        Write-Warning "Unrecognized old installer files retained: $Support. Use these scripts, not the old uninstaller."
+        return
+    }
+    if ($Owned) {
+        foreach ($Name in @("Installer.Core.ps1", "Setup.Backend.ps1", "installation.ini", "unins000.exe", "unins000.dat", "unins000.msg")) {
+            $Path = Join-Path $Support $Name
+            Assert-ReplaySafePath $Path
+            if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force }
+        }
+        if (Test-Path -LiteralPath $Support) {
+            if (@(Get-ChildItem -LiteralPath $Support -Force).Count -eq 0) { Remove-Item -LiteralPath $Support }
+            else { Write-Warning "Unfamiliar files retained in $Support" }
+        }
+        if ($RegistrationOwned) { Remove-Item -LiteralPath $Key -Force }
     }
 }

@@ -20,7 +20,15 @@ The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/
 
 The [GitHub Actions workflow](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) retains those checks for future changes. Hosted CI does not exercise a real Windows OBS session, desktop hotkeys, or GPU/video/audio behavior.
 
-## Graphical installer checks
+## Script installer checks (0.1.1)
+
+The current packages replace the graphical frontends with Windows CMD/PowerShell and Linux shell/Python launchers. Installer-only Inno/PySide/PyInstaller dependencies have been removed. Local checks cover the four-entry archive contract, Windows engine/legacy-support fixtures, Linux transactions and extracted shell launchers, profile preservation and release validation. Native production-package CI results will be recorded after the delivery run completes.
+
+The friend's reported Windows failure was at the setup stage; its exact error and OBS version were not provided, so the packaging change alone is not proof that specific failure is fixed. A reproduction/log is still needed for its regression test. Interactive UAC approval/denial, protected portable folders and real Windows OBS capture remain manual validation.
+
+## Historical graphical installer checks (0.1.0)
+
+These results describe the superseded graphical packages, not the new script launchers.
 
 The new offline installers reuse shared transaction engines and preserve the published filename/path behavior. Local preparation passed 15 Linux engine tests, four Qt wizard/archive tests and five release-gate tests. Windows engine fixtures passed under PowerShell 7.6.6 on Linux; Inno Setup 6.7.3 compiled the setup definition against non-executable fixtures. A production Linux `.run` was built on Ubuntu 22.04 and launched on Ubuntu and Fedora, including Fedora Wayland/X11. Isolated production OBS baseline/plugin runs preserved normal configuration hashes and had the same single remaining OBS allocation at shutdown.
 

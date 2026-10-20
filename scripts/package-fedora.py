@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Package the native module with OBS's user plugin directory layout."""
 import argparse
+import re
 import pathlib
 import shutil
 import tarfile
@@ -22,7 +23,8 @@ shutil.copytree(repo / "data/locale", package / "data/locale", dirs_exist_ok=Tru
 for name in ["README.md", "LICENSE", "CHANGELOG.md"]:
     shutil.copy2(repo / name, package / pathlib.Path(name).name)
 shutil.copytree(repo / "docs", package / "docs", dirs_exist_ok=True)
-archive = repo / "dist/obs-multi-replay-0.1.0-fedora44-x86_64.tar.gz"
+version = re.search(r"project\(obs-multi-replay VERSION ([\d.]+)", (repo / "CMakeLists.txt").read_text())[1]
+archive = repo / f"dist/obs-multi-replay-{version}-fedora44-x86_64.tar.gz"
 with tarfile.open(archive, "w:gz") as output:
     output.add(package, arcname="obs-multi-replay")
 print(archive)

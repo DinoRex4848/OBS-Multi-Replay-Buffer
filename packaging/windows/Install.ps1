@@ -1,96 +1,91 @@
 #requires -Version 5.1
 param(
     [ValidateSet("Install", "Uninstall")][string]$Action = "Install",
-    [ValidateSet("Standard", "Portable")][string]$Mode = "Standard",
+    [ValidateSet("Standard", "Portable", "")][string]$Mode = "",
     [string]$ObsRoot = "",
-    [switch]$FromUac
+    [switch]$NonInteractive,
+    [switch]$FromUac,
+    [string]$LogPath = ""
 )
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "Installer.Core.ps1")
-
-function Select-ObsFolder {
-    Add-Type -AssemblyName System.Windows.Forms
-    $Dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $Dialog.Description = "Choose the OBS folder containing bin\64bit\obs64.exe"
-    $Dialog.ShowNewFolderButton = $false
-    try {
-        if ($Dialog.ShowDialog() -ne [Windows.Forms.DialogResult]::OK) { throw "Installation cancelled." }
-        return $Dialog.SelectedPath
-    } finally { $Dialog.Dispose() }
+$ExitCode = 1
+function Write-ReplayMessage([string]$Message) {
+    Write-Host $Message
+    if ($LogPath) { [IO.File]::AppendAllText($LogPath, $Message + [Environment]::NewLine) }
 }
-
-function Find-StandardObs {
-    $Candidates = @()
-    foreach ($Key in @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio",
-                       "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio")) {
-        $Item = Get-ItemProperty -LiteralPath $Key -ErrorAction SilentlyContinue
-        if ($Item -and $Item.PSObject.Properties["InstallLocation"]) { $Candidates += $Item.InstallLocation }
-    }
-    $Candidates += Join-Path $env:ProgramFiles "obs-studio"
-    foreach ($Path in $Candidates) {
-        if ($Path -and (Test-Path -LiteralPath (Join-Path $Path "bin/64bit/obs64.exe"))) { return $Path }
-    }
-    return ""
-}
-
 try {
-    if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or ![Environment]::Is64BitOperatingSystem) {
-        throw "This installer requires 64-bit Windows and 64-bit OBS Studio."
-    }
-    Write-Host "OBS Multi-Length Replay - $Action"
+    . (Join-Path $PSScriptRoot "Installer.Core.ps1")
+    if ($env:OS -ne "Windows_NT" -or ![Environment]::Is64BitOperatingSystem) { throw "Windows x64 is required." }
+    $LogDirectory = Join-Path $PSScriptRoot "Logs"
+    Assert-ReplaySafePath $LogDirectory
+    [IO.Directory]::CreateDirectory($LogDirectory) | Out-Null
+    if (!$LogPath) { $LogPath = Join-Path $LogDirectory ("$Action-" + [Guid]::NewGuid().ToString("N") + ".log") }
+    # Only the elevated child reuses a log, and it must stay inside this package.
+    if ((Split-Path -Parent ([IO.Path]::GetFullPath($LogPath))) -ne [IO.Path]::GetFullPath($LogDirectory)) { throw "Invalid log location" }
+    Assert-ReplaySafePath $LogPath
+    Write-ReplayMessage "OBS Multi-Length Replay - $Action"
+    Write-ReplayMessage "Log: $LogPath"
     Assert-ReplayObsStopped
-    if ($Action -eq "Install") { $Package = Assert-ReplayPackage $PSScriptRoot }
-    if (!$ObsRoot) {
-        if ($Mode -eq "Portable") { $ObsRoot = Select-ObsFolder }
-        else { $ObsRoot = Find-StandardObs }
+    if (!$Mode) {
+        if ($NonInteractive) { throw "Specify -Mode Standard or -Mode Portable in noninteractive mode." }
+        $Choice = Read-Host "OBS installation: [1] Normal (default), [2] Portable, [Q] Cancel"
+        if ($Choice -match '^(q|Q)$') { throw [OperationCanceledException]::new("Cancelled. No plugin files were changed.") }
+        if ($Choice -notin @("", "1", "2")) { throw "Choose 1 or 2." }
+        $Mode = if ($Choice -eq "2") { "Portable" } else { "Standard" }
     }
-    if ($Action -eq "Install" -and !$ObsRoot) { $ObsRoot = Select-ObsFolder }
-    if ($ObsRoot) {
-        $ObsRoot = [IO.Path]::GetFullPath($ObsRoot)
-        $ObsExe = Join-Path $ObsRoot "bin/64bit/obs64.exe"
-        if (!(Test-Path -LiteralPath $ObsExe -PathType Leaf)) { throw "OBS was not found in the selected folder." }
-        if ($Action -eq "Install") {
-            Assert-ReplayWindowsBinary $ObsExe Exe
-            $Version = [Diagnostics.FileVersionInfo]::GetVersionInfo($ObsExe).ProductVersion
-            if ($Version -notmatch '(\d+\.\d+(?:\.\d+){0,2})' -or [version]$Matches[1] -lt [version]$Package.minimum_obs) {
-                throw "Install OBS Studio $($Package.minimum_obs) or newer first."
-            }
+    if (!$ObsRoot -and $Mode -eq "Standard") { $ObsRoot = Find-ReplayObs }
+    if (!$ObsRoot -and ($Mode -eq "Portable" -or $Action -eq "Install")) {
+        if ($NonInteractive) { throw "OBS was not found. Specify -ObsRoot with the OBS root folder." }
+        $ObsRoot = (Read-Host "OBS root folder (containing bin\64bit\obs64.exe); leave empty to cancel").Trim().Trim('"')
+        if (!$ObsRoot) { throw [OperationCanceledException]::new("Cancelled. No plugin files were changed.") }
+    }
+    if ($ObsRoot) { $ObsRoot = [IO.Path]::GetFullPath($ObsRoot); Assert-ReplaySafePath $ObsRoot }
+    if ($Action -eq "Install") {
+        Write-ReplayMessage (Invoke-ReplaySetup "Inspect" $Mode $ObsRoot $PSScriptRoot)
+    } else {
+        $Destination = if ($Mode -eq "Standard") { Join-Path $env:ProgramData "obs-studio/plugins/obs-multi-replay" } else { $ObsRoot }
+        Write-ReplayMessage "Remove only Multi-Length Replay from: $Destination"
+    }
+    if (!$NonInteractive -and !$FromUac -and (Read-Host "Continue? [y/N]") -notmatch '^(y|yes)$') {
+        throw [OperationCanceledException]::new("Cancelled. No plugin files were changed.")
+    }
+    $Principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    $Admin = $Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $NeedsAdmin = $Mode -eq "Standard"
+    if ($Mode -eq "Portable") {
+        foreach ($Path in @($ObsRoot, (Join-Path $ObsRoot "obs-plugins/64bit"), (Join-Path $ObsRoot "data/obs-plugins"), (Join-Path $ObsRoot "obs-multi-replay-setup"))) {
+            if (!(Test-ReplayWritablePath $Path)) { $NeedsAdmin = $true }
         }
     }
-    $Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $Principal = New-Object Security.Principal.WindowsPrincipal($Identity)
-    if ($Mode -eq "Standard" -and !$Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        # Pass paths as encoded JSON, so spaces, apostrophes and shell characters
-        # survive the UAC relaunch without being interpreted as commands.
-        $Arguments = @{ Script = $PSCommandPath; Action = $Action; Mode = $Mode; ObsRoot = $ObsRoot } | ConvertTo-Json -Compress
+    if ($NeedsAdmin -and !$Admin) {
+        if ($NonInteractive -or $FromUac) { throw "Administrator access is required for this target. Run the launcher as administrator or use interactive mode." }
+        $Arguments = @{ Script = $PSCommandPath; Action = $Action; Mode = $Mode; ObsRoot = $ObsRoot; LogPath = $LogPath } | ConvertTo-Json -Compress
         $Data = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Arguments))
         $Command = '$a = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + $Data + '")) | ConvertFrom-Json; ' +
-                   '& $a.Script -Action $a.Action -Mode $a.Mode -ObsRoot $a.ObsRoot -FromUac; exit $LASTEXITCODE'
+                   '& $a.Script -Action $a.Action -Mode $a.Mode -ObsRoot $a.ObsRoot -LogPath $a.LogPath -FromUac; exit $LASTEXITCODE'
         $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
         $Process = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -Verb RunAs -Wait -PassThru `
                                 -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $Encoded"
-        if ($Process.ExitCode -eq 0) {
-            if ($Action -eq "Install") {
-                Write-Host "Installed. Restart OBS and open Docks > Multi-Length Replay and Multi-Buffer Settings."
-            } else { Write-Host "Plugin removed. Profiles, hotkeys and recordings are preserved." }
-        } else { Write-Host "Installer did not finish. The detailed error was shown in the administrator window." }
-        exit $Process.ExitCode
-    }
-    Assert-ReplayObsStopped
-    $Message = Invoke-ReplaySetup $Action $Mode $ObsRoot $PSScriptRoot
-    $Installing = $Action -eq "Install"
-    Write-Host $Message
-    if ($Installing) {
-        Write-Host "Installed version $($Package.version) "
-        Write-Host "Restart OBS, then open Docks > Multi-Length Replay and Multi-Buffer Settings."
-        Write-Host "Assign replay shortcuts in OBS Settings > Hotkeys."
+        $ExitCode = $Process.ExitCode
+        if ($ExitCode -ne 0) { Write-ReplayMessage "The elevated installer failed. See the error details in $LogPath" }
     } else {
-        Write-Host "Plugin removed. Your OBS profiles, hotkeys and saved recordings are preserved."
+        Invoke-ReplaySetup $Action $Mode $ObsRoot $PSScriptRoot 3>&1 | ForEach-Object { Write-ReplayMessage $_.ToString() }
+        if ($Action -eq "Install") { Write-ReplayMessage "Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings." }
+        $ExitCode = 0
     }
-    exit 0
+} catch [OperationCanceledException] {
+    Write-ReplayMessage $_.Exception.Message
+    $ExitCode = 0
 } catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    if ($Mode -eq "Portable") { Write-Host "If the OBS folder is protected, right-click the launcher and run as administrator." }
-    if ($FromUac) { Read-Host "Press Enter to close this error window" | Out-Null }
-    exit 1
+    $Failure = $_
+    # Logging failures must not hide the original installation error.
+    try { Write-ReplayMessage ("ERROR: " + $Failure.Exception.Message) }
+    catch { Write-Host ("ERROR: " + $Failure.Exception.Message) }
+    if ($LogPath -and (Test-Path -LiteralPath $LogPath)) {
+        try { [IO.File]::AppendAllText($LogPath, $Failure.ScriptStackTrace + [Environment]::NewLine) } catch {}
+        Write-Host "Log: $LogPath"
+    }
+} finally {
+    if (!$NonInteractive -and !$FromUac) { Read-Host "Press Enter to close" | Out-Null }
 }
+exit $ExitCode

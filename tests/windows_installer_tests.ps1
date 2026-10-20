@@ -37,8 +37,7 @@ try {
     $Scripts = @(Get-ChildItem -LiteralPath (Join-Path $Repo "packaging/windows") -Filter *.ps1)
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/package-windows.ps1")
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/build-windows.ps1")
-    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/install-inno-ci.ps1")
-    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "tests/windows_setup_tests.ps1")
+    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "tests/windows_package_tests.ps1")
     foreach ($Script in $Scripts) {
         $Tokens = $null; $Errors = $null
         [Management.Automation.Language.Parser]::ParseFile($Script.FullName, [ref]$Tokens, [ref]$Errors) | Out-Null
@@ -54,20 +53,23 @@ try {
     [IO.File]::WriteAllText((Join-Path $Data "locale/en-US.ini"), "Test fixture locale")
     $Out = Join-Path $Temp "Friend's [package] & output"
     & (Join-Path $Repo "scripts/package-windows.ps1") -PackagePath $Stage -OutputDirectory $Out
-    $Kit = Join-Path $Out "windows-portable-installer"
+    $ArchiveRoot = Join-Path $Out "windows-installer"
+    $Kit = Join-Path $ArchiveRoot "PluginFiles"
     $Payload = Join-Path $Kit "payload/obs-multi-replay"
     Assert-ReplayPackage $Kit | Out-Null
     $PackageVersion = (Assert-ReplayPackage $Kit).version
-    $ZipPath = Join-Path $Out "obs-multi-replay-$PackageVersion-windows-x64-portable-installer.zip"
+    $ZipPath = Join-Path $Out "obs-multi-replay-$PackageVersion-windows-x64.zip"
     Check (Test-Path -LiteralPath $ZipPath) "Installer ZIP missing"
     $Zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
+        $Roots = @($Zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/').Split('/')[0] } | Sort-Object -Unique)
+        Check (($Roots -join ',') -eq "Install.cmd,PluginFiles,README.txt,Uninstall.cmd") "ZIP must contain exactly three files and PluginFiles"
         # Windows PowerShell may use backslashes in ZIP entries; compare logical paths.
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "Install.cmd" }).Count -eq 1) "ZIP launcher missing"
-        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
-        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "package.json" }).Count -eq 1) "ZIP manifest missing"
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "PluginFiles/payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "PluginFiles/package.json" }).Count -eq 1) "ZIP manifest missing"
     } finally { $Zip.Dispose() }
-    Check (Test-Path -LiteralPath (Join-Path $Kit "Install.cmd")) "Launcher missing"
+    Check (Test-Path -LiteralPath (Join-Path $ArchiveRoot "Install.cmd")) "Launcher missing"
     $ManifestPath = Join-Path $Kit "package.json"
     $ManifestText = Get-Content -LiteralPath $ManifestPath -Raw
     $Installed = Join-Path $Temp "Friend's [OBS] & Files/plugins/obs-multi-replay"
@@ -126,6 +128,15 @@ try {
     Remove-Item Function:\Move-Item
     Check ((Get-FileHash -LiteralPath $PortableDll).Hash -eq $OldHash) "Rollback lost the old DLL"
     Check ([IO.File]::ReadAllText((Join-Path $PortableData "old.txt")) -eq "previous install") "Rollback lost old helper data"
+    $Support = Join-Path $Portable "obs-multi-replay-setup"
+    [IO.Directory]::CreateDirectory($Support) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $Support "installation.ini"), "[Setup]`r`nMode=Portable`r`n")
+    [IO.File]::WriteAllText((Join-Path $Support "unins000.exe"), "old uninstaller - never execute")
+    [IO.File]::WriteAllText((Join-Path $Support "keep.txt"), "unfamiliar")
+    Remove-ReplayLegacySetup "Portable" $Portable
+    Check (!(Test-Path -LiteralPath (Join-Path $Support "unins000.exe"))) "Legacy uninstaller survived migration"
+    Check ([IO.File]::ReadAllText((Join-Path $Support "keep.txt")) -eq "unfamiliar") "Migration deleted unfamiliar files"
+    Remove-Item -LiteralPath $Support -Recurse -Force
     $Status = Get-ReplayInstallation $Portable "Portable" "0.1.0"
     Check ($Status.action -eq "Update") "Legacy install was not detected"
     $Receipt = Join-Path $PortableData "replay-installation.json"

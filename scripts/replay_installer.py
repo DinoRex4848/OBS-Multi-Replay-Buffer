@@ -28,21 +28,10 @@ def version_tuple(value):
     return tuple(map(int, value.split(".")))
 
 
-def host_environment():
-    """Do not give host Flatpak the frozen application's Qt/shared libraries."""
-    env = dict(os.environ)
-    env.pop("LD_LIBRARY_PATH", None)
-    if env.get("LD_LIBRARY_PATH_ORIG"):
-        env["LD_LIBRARY_PATH"] = env["LD_LIBRARY_PATH_ORIG"]
-    for key in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH"):
-        env.pop(key, None)
-    return env
-
-
 def host_run(arguments):
     try:
         return subprocess.run(arguments, text=True, capture_output=True, check=True,
-                              timeout=30, env=host_environment()).stdout.strip()
+                              timeout=30).stdout.strip()
     except FileNotFoundError as error:
         raise RuntimeError("Flatpak is required. Install Flatpak and OBS Studio first.") from error
     except subprocess.CalledProcessError as error:
@@ -341,7 +330,7 @@ def perform(package, action, config=None):
 
 
 def obs_running():
-    result = host_run(["flatpak", "ps", "--columns=application"])
+    result = host_run(["flatpak", "ps", "--columns=application"]) if shutil.which("flatpak") else ""
     for path in pathlib.Path("/proc").glob("[0-9]*/comm"):
         try:
             if path.read_text().strip() in ("obs", "obs64"):

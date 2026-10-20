@@ -1,11 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (draft testing build)
 
-Initial public source snapshot. The build metadata remains `0.1.0`; no release has been published.
+- Replace graphical EXE/`.run` setup with offline Windows `.cmd` and Linux `.sh` install/uninstall archives.
+- Keep exactly three visible files and one `PluginFiles` folder in each archive.
+- Retain update/repair, compatibility and integrity checks, rollback, logs, and scoped removal.
+- Retire recognized legacy EXE uninstall support after successful migration; preserve unfamiliar files.
+- Test extracted launchers and production dependencies in CI. Releases remain unpublished drafts.
 
-- Offline graphical Windows EXE and Linux Flatpak `.run` installers with upgrade, repair, removal, version guards, and transactional recovery.
-- Native compiled-installer checks, Linux wizard tests, and checksum-gated draft prereleases.
+## 0.1.0 (historical draft)
+
+Initial public source snapshot and experimental graphical installer builds; no release was published.
+
 - Three configurable replay presets backed by one encoded RAM history.
 - Shared recording encoders by default, with an option for separate replay encoding.
 - Native OBS replay dock, per-preset hotkeys, and a separate Settings/Diagnostics window.

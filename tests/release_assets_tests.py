@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Validate release gates without contacting GitHub or publishing anything."""
 import hashlib
+import io
+import tarfile
+import zipfile
 import importlib.util
 import json
 import pathlib
@@ -19,9 +22,29 @@ class ReleaseTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
-        for suffix in ("windows-x64-setup.exe", "linux-flatpak-x86_64-setup.run"):
+        for windows in (True, False):
+            suffix = "windows-x64.zip" if windows else "linux-flatpak-x86_64.tar.gz"
             path = self.root / f"obs-multi-replay-{release.version()}-{suffix}"
-            path.write_bytes(b"fixture asset")
+            prefix = "PluginFiles/payload/obs-multi-replay/"
+            files = {"data/test": hashlib.sha256(b"fixture").hexdigest()}
+            manifest = {"version" if windows else "plugin_version": release.version(),
+                        "files": [{"path": k, "sha256": v} for k, v in files.items()] if windows else files}
+            content = {prefix + "data/test": b"fixture", "README.txt": b"fixture README"}
+            manifest_name = "PluginFiles/package.json" if windows else prefix + "manifest.json"
+            content[manifest_name] = json.dumps(manifest).encode()
+            for name in (("Install.cmd", "Uninstall.cmd") if windows else ("install.sh", "uninstall.sh")):
+                content[name] = b"@echo off\r\n" if windows else b"#!/bin/sh\n"
+            if windows:
+                with zipfile.ZipFile(path, "w") as archive:
+                    for name, data in content.items():
+                        archive.writestr(name, data)
+            else:
+                with tarfile.open(path, "w:gz") as archive:
+                    for name, data in content.items():
+                        entry = tarfile.TarInfo(name)
+                        entry.size = len(data)
+                        entry.mode = 0o755 if name.endswith(".sh") else 0o644
+                        archive.addfile(entry, io.BytesIO(data))
             path.with_name(path.name + ".sha256").write_text(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n")
         for name in ("linux-installer-notices.txt", "windows-installer-notices.txt"):
             (self.root / name).write_text("fixture notices")
@@ -41,10 +64,26 @@ class ReleaseTests(unittest.TestCase):
             release.prepare(self.root)
 
     def test_changed_asset_refused(self):
-        path = next(self.root.glob("*.exe"))
+        path = next(self.root.glob("*.zip"))
         path.write_bytes(b"damaged")
         with self.assertRaisesRegex(RuntimeError, "Checksum mismatch"):
             release.prepare(self.root)
+
+    def test_wrong_archive_layout_refused(self):
+        path = next(self.root.glob("*.zip"))
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr("unexpected.txt", "extra")
+        with self.assertRaisesRegex(RuntimeError, "exactly three"):
+            release.validate_archive(path)
+
+    def test_payload_tampering_refused(self):
+        path = next(self.root.glob("*.zip"))
+        replacement = self.root / "tampered.zip"
+        with zipfile.ZipFile(path) as source, zipfile.ZipFile(replacement, "w") as dest:
+            for entry in source.infolist():
+                dest.writestr(entry, b"damaged" if entry.filename.endswith("data/test") else source.read(entry))
+        with self.assertRaisesRegex(RuntimeError, "Payload hash"):
+            release.validate_archive(replacement)
 
     def test_published_release_never_modified(self):
         with mock.patch.object(release.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, '{"isDraft":false}')) as run:

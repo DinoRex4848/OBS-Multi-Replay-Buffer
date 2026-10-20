@@ -1,9 +1,7 @@
 param(
     [string]$PackagePath = "",
     [string]$OutputDirectory = "",
-    [string]$Version = "",
-    [switch]$BuildSetup,
-    [string]$Iscc = ""
+    [string]$Version = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -27,9 +25,10 @@ if (!(Test-Path -LiteralPath $Dll -PathType Leaf) -or !(Test-Path -LiteralPath $
 Assert-ReplayWindowsBinary $Dll Dll
 Assert-ReplayWindowsBinary $Writer Exe
 [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
-$Kit = Join-Path $OutputDirectory "windows-portable-installer"
+$Kit = Join-Path $OutputDirectory "windows-installer"
 if (Test-Path -LiteralPath $Kit) { Remove-Item -LiteralPath $Kit -Recurse -Force }
-$Payload = Join-Path $Kit "payload/obs-multi-replay"
+$Private = Join-Path $Kit "PluginFiles"
+$Payload = Join-Path $Private "payload/obs-multi-replay"
 $Bin = Join-Path $Payload "bin/64bit"
 [IO.Directory]::CreateDirectory($Bin) | Out-Null
 Copy-Item -LiteralPath $Dll -Destination (Join-Path $Bin "obs-multi-replay.dll")
@@ -40,9 +39,12 @@ $Notices = Join-Path $PackagePath "third-party-notices"
 if (Test-Path -LiteralPath $Notices) {
     Copy-Item -LiteralPath $Notices -Destination (Join-Path $Payload "data/third-party-notices") -Recurse
 }
-foreach ($Name in @("Install.cmd", "Install-Portable.cmd", "Uninstall.cmd", "Uninstall-Portable.cmd",
-                    "Install.ps1", "Installer.Core.ps1", "Setup.Backend.ps1", "Setup.Relaunch.ps1", "READ-ME-FIRST.txt")) {
+foreach ($Name in @("Install.cmd", "Uninstall.cmd")) {
     Copy-Item -LiteralPath (Join-Path $Templates $Name) -Destination (Join-Path $Kit $Name)
+}
+Copy-Item -LiteralPath (Join-Path $Templates "READ-ME-FIRST.txt") -Destination (Join-Path $Kit "README.txt")
+foreach ($Name in @("Install.ps1", "Installer.Core.ps1")) {
+    Copy-Item -LiteralPath (Join-Path $Templates $Name) -Destination (Join-Path $Private $Name)
 }
 $Root = [IO.Path]::GetFullPath($Payload).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $Files = @(Get-ChildItem -LiteralPath $Payload -Recurse -File -Force | Sort-Object FullName | ForEach-Object {
@@ -50,36 +52,18 @@ $Files = @(Get-ChildItem -LiteralPath $Payload -Recurse -File -Force | Sort-Obje
 })
 $Manifest = @{ format = 1; plugin = "obs-multi-replay"; version = $Version; platform = "windows-x64";
                minimum_obs = "32.1"; files = $Files }
-$Manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Kit "package.json") -Encoding UTF8
-Assert-ReplayPackage $Kit | Out-Null
-$Zip = Join-Path $OutputDirectory "obs-multi-replay-$Version-windows-x64-portable-installer.zip"
+$Manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Private "package.json") -Encoding UTF8
+Assert-ReplayPackage $Private | Out-Null
+$Zip = Join-Path $OutputDirectory "obs-multi-replay-$Version-windows-x64.zip"
 Write-ReplayZip $Kit $Zip
 $Hash = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
 "$Hash  $(Split-Path -Leaf $Zip)" | Set-Content -LiteralPath ($Zip + ".sha256") -Encoding ASCII
-Write-Host "Created portable installer: $Zip"
-if ($BuildSetup) {
-    $NoticeText = @("Windows installer dependency notices", "", (Get-Content -LiteralPath (Join-Path $Payload "data/LICENSE") -Raw),
-                    (Get-Content -LiteralPath (Join-Path $Payload "data/THIRD_PARTY.md") -Raw))
-    $BundledNotices = Join-Path $Payload "data/third-party-notices"
-    if (Test-Path -LiteralPath $BundledNotices) {
-        foreach ($File in Get-ChildItem -LiteralPath $BundledNotices -Recurse -File | Sort-Object FullName) {
-            $NoticeText += "`r`n$($File.Name)`r`n" + (Get-Content -LiteralPath $File.FullName -Raw)
-        }
+Write-Host "Created Windows script package: $Zip"
+$NoticeText = @((Get-Content -LiteralPath (Join-Path $Payload "data/LICENSE") -Raw),
+                (Get-Content -LiteralPath (Join-Path $Payload "data/THIRD_PARTY.md") -Raw))
+if (Test-Path -LiteralPath $Notices) {
+    foreach ($File in Get-ChildItem -LiteralPath $Notices -Recurse -File | Sort-Object FullName) {
+        $NoticeText += "`r`n$($File.Name)`r`n" + (Get-Content -LiteralPath $File.FullName -Raw)
     }
-    $NoticeText -join "`r`n" | Set-Content -LiteralPath (Join-Path $OutputDirectory "windows-installer-notices.txt") -Encoding UTF8
-    if (!$Iscc) {
-        $Compiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-        if ($Compiler) { $Iscc = $Compiler.Source }
-        else { $Iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6/ISCC.exe" }
-    }
-    if (!(Test-Path -LiteralPath $Iscc)) { throw "Install Inno Setup 6 to build the setup EXE (or pass -Iscc)." }
-    & $Iscc "/DPluginVersion=$Version" "/DKitDir=$([IO.Path]::GetFullPath($Kit))" `
-        "/DOutputDir=$([IO.Path]::GetFullPath($OutputDirectory))" (Join-Path $Templates "setup.iss")
-    if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
-    $Setup = Join-Path $OutputDirectory "obs-multi-replay-$Version-windows-x64-setup.exe"
-    Assert-ReplayWindowsBinary $Setup Exe -AllowX86
-    # Inno's bootstrap loader may be x86 even though it targets x64 OBS.
-    $Hash = (Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$Hash  $(Split-Path -Leaf $Setup)" | Set-Content -LiteralPath ($Setup + ".sha256") -Encoding ASCII
-    Write-Host "Created graphical installer: $Setup"
 }
+$NoticeText -join "`r`n" | Set-Content -LiteralPath (Join-Path $OutputDirectory "windows-installer-notices.txt") -Encoding UTF8
