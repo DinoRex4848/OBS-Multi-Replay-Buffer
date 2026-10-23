@@ -44,7 +44,18 @@ jobs:
       - name: Install pinned setup compiler
         # Inno is a build dependency; the resulting setup runs offline.
         shell: pwsh
-        run: choco install innosetup --version=6.7.3 --no-progress -y
+        run: |
+          $Setup = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
+          $Compiler = Join-Path $env:RUNNER_TEMP "Inno Setup 6"
+          Invoke-WebRequest "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" -OutFile $Setup
+          if ((Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash -ne "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732") {
+            throw "Inno Setup download checksum mismatch"
+          }
+          $Process = Start-Process -FilePath $Setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $Compiler + '"')) -Wait -PassThru
+          if ($Process.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $Compiler "ISCC.exe"))) {
+            throw "Inno Setup compiler installation failed: $($Process.ExitCode)"
+          }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $Compiler -Encoding utf8
       - name: Build Windows SDK, plugin, helper and offline setup
         shell: pwsh
         run: ./scripts/build-windows.ps1
