@@ -174,8 +174,14 @@ public static class ReplayDllProbe {
         $Initial = "[General]`nFirstRun=true`n[Basic]`nProfile=Test`nProfileDir=Test`nSceneCollection=Test`nSceneCollectionFile=Test`n"
         [IO.File]::WriteAllText((Join-Path $Config "global.ini"), $Initial)
         [IO.File]::WriteAllText((Join-Path $Config "user.ini"), $Initial + "[BasicWindow]`nPreviewEnabled=false`n")
-        $Process = Start-Process (Join-Path $Obs "bin/64bit/obs64.exe") -WorkingDirectory (Join-Path $Obs "bin/64bit") `
-            -ArgumentList '--portable --multi --disable-updater --disable-shutdown-check --disable-missing-files-check' -PassThru
+        # Start-Process treats WorkingDirectory as a wildcard path in PowerShell
+        # 5.1. ProcessStartInfo preserves the literal apostrophes/brackets tested here.
+        $ObsInfo = New-Object Diagnostics.ProcessStartInfo
+        $ObsInfo.FileName = Join-Path $Obs "bin/64bit/obs64.exe"
+        $ObsInfo.WorkingDirectory = Join-Path $Obs "bin/64bit"
+        $ObsInfo.Arguments = '--portable --multi --disable-updater --disable-shutdown-check --disable-missing-files-check'
+        $ObsInfo.UseShellExecute = $false
+        $Process = [Diagnostics.Process]::Start($ObsInfo)
         try {
             Start-Sleep -Seconds 10
             $RuntimeLogs = @(Get-ChildItem -LiteralPath (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt | Sort-Object LastWriteTime)
@@ -188,7 +194,10 @@ public static class ReplayDllProbe {
             Check ($Process.ExitCode -eq 0) "OBS exited with an error"
             [IO.Directory]::CreateDirectory($Logs) | Out-Null
             Copy-Item -LiteralPath $RuntimeLogs[-1].FullName -Destination (Join-Path $Logs "obs-startup-shutdown.log")
-        } finally { if (!$Process.HasExited) { $Process.Kill(); $Process.WaitForExit() } }
+        } finally {
+            if (!$Process.HasExited) { $Process.Kill(); $Process.WaitForExit() }
+            $Process.Dispose()
+        }
     }
     $ProfileHash = (Get-FileHash -LiteralPath $Profile).Hash
     $Moved = Join-Path $Scratch "moved portable OBS"
