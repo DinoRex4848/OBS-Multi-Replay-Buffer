@@ -86,7 +86,9 @@ def validate_archive(path):
 
 def prepare(directory):
     required = [f"obs-multi-replay-{version()}-windows-x64.zip",
-                f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz"]
+                f"obs-multi-replay-{version()}-windows-x64-setup.exe",
+                f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz",
+                f"obs-multi-replay-{version()}-linux-flatpak-x86_64.run"]
     lines = []
     files = []
     for name in required:
@@ -95,7 +97,17 @@ def prepare(directory):
         checksum = path.with_name(name + ".sha256")
         if checksum.read_text(encoding="utf-8-sig").strip().lower() != f"{digest}  {name}".lower():
             raise RuntimeError(f"Checksum mismatch: {name}")
-        validate_archive(path)
+        if name.endswith(".exe"):
+            if path.read_bytes()[:2] != b"MZ":
+                raise RuntimeError("Windows setup is not a Windows executable")
+        elif name.endswith(".run"):
+            header, marker, payload = path.read_bytes().partition(b"\n__REPLAY_ARCHIVE_BELOW__\n")
+            archive = directory / f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz"
+            if (not marker or not header.startswith(b"#!/bin/sh\n") or payload != archive.read_bytes()
+                    or hashlib.sha256(payload).hexdigest().encode() not in header):
+                raise RuntimeError("Single-file Linux installer differs from the validated archive")
+        else:
+            validate_archive(path)
         lines.append(f"{digest}  {name}\n")
         files.extend((path, checksum))
     for name in ("linux-installer-notices.txt", "windows-installer-notices.txt", "linux-build.json"):
@@ -111,12 +123,15 @@ def prepare(directory):
     metadata = json.loads((directory / "linux-build.json").read_text())
     body = directory / "release-notes.txt"
     body.write_text(f"Experimental OBS Multi-Length Replay {version()}\n\n"
-                    "Extract the ENTIRE archive for your platform into a writable folder. Rerun its install script to update; "
+                    "Download the installer for your OBS installation type. Rerun it to update or repair; "
                     "settings, hotkeys and recordings are preserved. Close OBS before installation or removal.\n\n"
                     "Windows: x64 OBS 32.1 or newer; standard and portable installations. "
-                    "Run Install.cmd or Uninstall.cmd. Built-in Windows PowerShell is used.\n\n"
+                    "For normal OBS, run the offline -setup.exe (one upfront UAC prompt); remove through Installed Apps. "
+                    "For portable OBS, extract the entire ZIP and run Install.cmd / Uninstall.cmd with Portable selected. "
+                    "Built-in Windows PowerShell is used.\n\n"
                     f"Linux: Flatpak OBS {metadata['obs_version']} x86_64, commit `{metadata['app_commit']}`. "
-                    "Python 3.10+ and Flatpak are required. Run `sh ./install.sh` or `sh ./uninstall.sh`, without sudo. "
+                    f"Python 3.10+ and Flatpak are required. Run `sh ./obs-multi-replay-{version()}-linux-flatpak-x86_64.run`, "
+                    "without sudo; add `--uninstall` for removal. The tar archive is an alternative extracted package. "
                     "Other OBS commits require a matching installer. Native RPM/deb OBS is not targeted.\n\n"
                     "Review docs/INSTALLERS.md and docs/VALIDATION.md for acceptance results and remaining manual checks.\n")
     return files, body

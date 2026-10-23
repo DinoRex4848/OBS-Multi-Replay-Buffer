@@ -1,112 +1,123 @@
-# Script installers
+# Installing Multi-Length Replay
 
-Download the Windows ZIP or Linux Flatpak `.tar.gz`, close OBS, and extract the
-**entire archive into a writable folder**. Each archive has exactly three files
-and one folder, without another enclosing folder:
+Close OBS normally before installing, repairing or removing the plugin. Installers
+replace only this plugin's binaries and data. Profiles, scenes, replay preferences,
+hotkeys, recordings and other plugins are preserved. No installer changes OBS itself.
+This revision is experimental; see [local validation](INSTALLER_REVIEW.md) before sharing.
 
-| Windows | Linux |
-| --- | --- |
-| `Install.cmd` | `install.sh` |
-| `Uninstall.cmd` | `uninstall.sh` |
-| `README.txt` | `README.txt` |
-| `PluginFiles/` | `PluginFiles/` |
+## Windows 10/11 x64: normally installed OBS
 
-All supporting engines, compiled binaries, manifests, licenses and documentation
-are inside `PluginFiles`. Logs go into `PluginFiles/Logs`. Keep the extracted
-package for removal, or use a newer package's uninstall script.
+Download **`obs-multi-replay-0.1.2-windows-x64-setup.exe`**. Double-click it and approve
+the administrator prompt at startup. Check the detected OBS folder and click Install.
+No ZIP extraction, Python, SDK, compiler or additional PowerShell installation is
+needed. The package includes the writer's dependencies and works offline.
 
-## Windows x64
+Setup checks OBS's application and uninstall registry keys, then Program Files.
+If necessary, browse to the OBS root containing `bin\64bit\obs64.exe`. The plugin
+requires OBS 32.1 or newer; Windows builds target OBS 32.1.1. The minimum is not a
+promise of compatibility with every future release. Portable marker files cause
+setup to direct you to the separate ZIP instead.
 
-Double-click **Install.cmd**. Choose normal or portable OBS, check the detected
-folder/action, and confirm. OBS 32.1 or newer is required; the tested Windows SDK
-and acceptance runtime are OBS 32.1.1. That minimum does not guarantee compatibility
-with every future OBS version. Windows PowerShell 5.1 is used; no Python, compiler,
-SDK or additional PowerShell installation is needed.
+The plugin goes into `C:\ProgramData\obs-studio\plugins\obs-multi-replay`.
+Installer support and the uninstaller go into `C:\Program Files\OBS Multi Replay Buffer`.
+Run setup again to update or repair. Remove **OBS Multi-Length Replay** through
+Windows **Installed Apps**; the original download and OBS executable are not needed
+for removal. Setup logs are `Setup Log*.txt` in `%TEMP%`, or the path given by `/LOG`.
 
-Normal installations use `C:\ProgramData\obs-studio\plugins\obs-multi-replay` and
-request administrator access. Portable installations use the selected OBS root's
-`obs-plugins\64bit` and `data\obs-plugins\obs-multi-replay` paths, requesting elevation
-only for protected folders. Run **Uninstall.cmd** and choose the same mode. If
-portable OBS moved, give its current folder. Standard removal remains possible
-after OBS is removed; portable removal only needs the selected root, not obs64.exe.
-
-For automation, from Command Prompt:
+For a pre-elevated automation shell:
 
 ```bat
-Install.cmd -Mode Standard -NonInteractive
+obs-multi-replay-0.1.2-windows-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /OBSROOT="D:\OBS Studio" /LOG="D:\setup.log"
+```
+
+There is no `/ALLUSERS` or secondary elevation flow. Interactive UAC approval and
+denial still require native manual acceptance before publication. Signing is not
+configured; Windows may identify an unsigned build as an unknown publisher.
+
+## Windows x64: portable OBS
+
+Extract the **entire Windows ZIP** into a writable folder. It contains `Install.cmd`,
+`Uninstall.cmd`, `README.txt` and `PluginFiles/`. Double-click **Install.cmd**, choose
+**Portable**, select the OBS root, check the action/destination, and confirm.
+Run it again for update/repair. Run **Uninstall.cmd**, choosing Portable and the same
+folder, to remove the plugin. If OBS moved, select its current folder.
+
+The portable paths are `obs-plugins\64bit\obs-multi-replay.dll` and
+`data\obs-plugins\obs-multi-replay`. Portable installation does not register an
+Installed Apps entry. Protected folders request administrator access; ordinary
+writable portable folders do not. Logs are in `PluginFiles/Logs`.
+
+```bat
 Install.cmd -Mode Portable -ObsRoot "D:\Portable OBS" -NonInteractive
 Uninstall.cmd -Mode Portable -ObsRoot "D:\Moved OBS" -NonInteractive
 ```
 
-Noninteractive mode skips confirmation and closing pauses, and fails instead of
-opening a UAC prompt. Elevate the calling shell for normal/protected targets.
-Interactive errors stay visible until Enter. Scripts use a process-local execution
-policy override; they do not change system execution policy.
-
-There is no new Installed Apps registration or separate setup uninstaller. Older
-script and EXE installs are supported. After successful replacement/removal, the
-engine retires recognized old EXE registrations and support files, without running
-the old uninstaller. Unfamiliar files are retained and reported. Use the new scripts,
-not a retained obsolete EXE uninstaller, if cleanup reports a problem.
+Noninteractive scripts fail if elevation is needed. The scripts retain Standard
+mode for existing automation, but normal desktop installs should use the EXE and
+Installed Apps together. Keep the ZIP or use a newer ZIP for portable removal.
+Execution-policy overrides apply only to the launched PowerShell process.
 
 ## Linux x86_64: Flatpak OBS
 
-Requirements: **Python 3.10+**, Flatpak, and the matching x86_64 OBS Flatpak.
-No Python packages, bundled Qt installer runtime, development SDK or sudo are
-needed. Install missing prerequisites using your distribution's package manager.
-
-From a terminal in the extracted folder:
+Download **`obs-multi-replay-0.1.2-linux-flatpak-x86_64.run`**, open a terminal in
+the download folder, and run:
 
 ```sh
-sh ./install.sh
-sh ./uninstall.sh
-# Automation, without confirmation or closing pauses:
-sh ./install.sh --non-interactive
-sh ./uninstall.sh --non-interactive
+sh ./obs-multi-replay-0.1.2-linux-flatpak-x86_64.run
+# Update or repair: run the same command again.
+# Remove only the plugin:
+sh ./obs-multi-replay-0.1.2-linux-flatpak-x86_64.run --uninstall
 ```
 
-Shell files are executable in the archive; a file manager's **Run in Terminal**
-option may also work. Terminal invocation is supported independently of X11/Wayland.
-Run as your desktop user, without sudo. The destination is
+Run as your desktop user, **without sudo**. Requirements are Python 3.10+, Flatpak,
+and the matching x86_64 OBS Flatpak. The installer checks its embedded archive,
+extracts it temporarily, shows the action/destination, and asks for confirmation.
+It downloads nothing, changes no Flatpak permissions, and installs no host packages.
+Logs persist in `${XDG_STATE_HOME:-~/.local/state}/obs-multi-replay/logs`.
+Add `--non-interactive` for automation. Use `--help` for the short command summary.
+
+The supported binary target is **Flatpak OBS 32.2.2**, exact commit
+`21b35765922fb5c8b92ccdccedc0d8ca709b12f86a961780350199082da822ef`, using its
+FFmpeg 8 ABI. Check the accompanying `linux-build.json` for each build. A different
+OBS deployment requires a matching plugin build; the installer will not downgrade
+OBS or bypass the commit check. User and system Flatpak installs are detected;
+multiple OBS installations are refused as ambiguous. Uninstall does not require
+the original OBS commit.
+
+The destination is
 `~/.var/app/com.obsproject.Studio/config/obs-studio/plugins/obs-multi-replay`.
+Plugin backups remain under `replay-plugin-backups` beside `plugins`.
+No settings migration is performed; the developer CLI retains explicit migration.
 
-The package must match the **exact OBS Flatpak commit**, recorded in
-`linux-build.json` and the embedded payload manifest. A newer OBS app may require
-a matching plugin build. The installer rejects missing, incompatible or ambiguous
-Flatpak targets before replacing files. Native RPM/deb OBS is outside this package's
-scope. Removal works without a matching OBS commit or valid install payload.
-Plugin backups remain under `replay-plugin-backups` beside the configuration's
-`plugins` folder. Settings migration is not performed by these launchers; the
-repository's developer CLI keeps explicit migration support.
+The `.tar.gz` is an alternative: extract it entirely into a writable folder and
+run `sh ./install.sh` or `sh ./uninstall.sh`. Its logs stay in `PluginFiles/Logs`.
+Both Linux downloads use the same verified payload and transaction engine.
 
-## Updates, errors and recovery
+## Linux native RPM/deb OBS
 
-Run the latest install script again for **Update** or same-version **Repair**.
-Known newer installations cannot be downgraded. Legacy installs without version
-metadata are identified as updates. Both engines check hashes, architecture and
-OBS compatibility, refuse operations while OBS runs, lock concurrent operations,
-and stage replacements with rollback/recovery journals.
+The Flatpak package cannot be used with native OBS, even on the same distribution.
+Do not copy its `.so` into a native OBS folder. Native Qt/OBS/FFmpeg libraries must
+match the plugin build. Fedora 44 / RPM OBS 32.1.1 has historical runtime evidence
+and a separate [developer build path](DEVELOPMENT.md#fedora-rpm-obs). Its archive is
+developer tooling, not a tested general Linux installer. No deb package, other
+distribution, ARM build or macOS installer is currently offered.
 
-Profiles, scenes, hotkeys, replay settings, recordings and other plugins remain
-unchanged. Removal deletes only this plugin and recognized installer support;
-retained backups remain. After an interrupted operation, rerun the script for the
-same mode/folder. Keep recovery files if a permissions/filesystem error prevents
-recovery. Include the error and `PluginFiles/Logs` when reporting failures.
+## Recovery and delivery
 
-## Building and GitHub delivery
+Both engines verify payload hashes/architecture, refuse running OBS and concurrent
+operations, block known downgrades, and stage changes with rollback/recovery
+journals. After interruption, rerun the installer for the same target. Retain
+recovery files if permissions prevent recovery and include the error/log in a report.
+Recognized obsolete 0.1.0 Windows setup files/registration are retired without
+executing their old uninstaller; unfamiliar files are retained and reported.
 
-Windows: run `scripts/build-windows.ps1` with Visual Studio/OBS prerequisites from
-[DEVELOPMENT.md](DEVELOPMENT.md). Repackage compiled staging files with
-`scripts/package-windows.ps1`. Linux: run `bash scripts/build-flatpak.sh` against
-the matching Flatpak SDK, or repackage its validated staging payload with
-`python3 scripts/package_linux.py`.
+Build Windows with `scripts/build-windows.ps1` (Visual Studio/OBS prerequisites and
+Inno Setup 6). Repackage staging files using `scripts/package-windows.ps1`, then
+`scripts/package-windows-setup.ps1`. Build Linux using `scripts/build-flatpak.sh`
+against the matching app/SDK; `scripts/package_linux.py` creates both Linux formats.
 
-The only user-facing packages are `obs-multi-replay-VERSION-windows-x64.zip` and
-`obs-multi-replay-VERSION-linux-flatpak-x86_64.tar.gz`. CI validates extracted
-scripts, production dependencies, archive structure/hashes and isolated Linux
-OBS loading. Fedora's native development archive remains separate developer tooling.
-A version tag matching CMake creates an **unpublished draft prerelease** with the
-archives, checksums, notices and Linux compatibility metadata after all jobs pass.
-Published releases are never changed. The old `v0.1.0` graphical draft/tag remain
-historical; current script packages use `v0.1.1`. See [VALIDATION.md](VALIDATION.md)
-for test evidence and remaining interactive/hardware checks.
+CI checks the ordinary Windows wizard, extracted portable scripts, dependency
+loading, isolated OBS startup/shutdown, Linux transactions and production loading.
+Those checks must pass on this revision before sharing binaries. A future matching
+version tag prepares an **unpublished draft prerelease**, with all four assets,
+checksums, notices and Linux compatibility metadata. No publication is automatic.

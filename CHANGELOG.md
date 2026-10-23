@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — local installer candidate
+
+- Add a conventional offline Windows setup with elevation at startup, normal OBS detection, and Installed Apps removal; keep portable OBS separate.
+- Add a single-file offline Linux Flatpak installer with persistent logs and archive integrity checks, retaining exact OBS commit/ABI restrictions.
+- Exercise the ordinary Windows wizard and isolated OBS startup in CI; retain transaction, rollback and settings-preservation checks.
+- Require setup, portable ZIP and both Linux formats in draft-release validation. This candidate has not been pushed, tagged or published.
+
 ## 0.1.1 (draft testing build)
 
 - Replace graphical EXE/`.run` setup with offline Windows `.cmd` and Linux `.sh` install/uninstall archives.

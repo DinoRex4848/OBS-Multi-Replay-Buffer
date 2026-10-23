@@ -1,11 +1,12 @@
 # Native acceptance checks for the extracted production script package, never fixture payloads.
 # Run on a disposable Windows builder; the standard-install test uses ProgramData.
-param([string]$PackagePath = "", [switch]$SmokeObs)
+param([string]$PackagePath = "", [string]$SetupPath = "", [switch]$SmokeObs)
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
 $Version = [regex]::Match((Get-Content (Join-Path $Repo "CMakeLists.txt") -Raw), 'project\(obs-multi-replay VERSION ([\d.]+)').Groups[1].Value
 if (!$PackagePath) { $PackagePath = Join-Path $Repo "dist/obs-multi-replay-$Version-windows-x64.zip" }
 $PackagePath = [IO.Path]::GetFullPath($PackagePath)
+if (!$SetupPath) { $SetupPath = Join-Path $Repo "dist/obs-multi-replay-$Version-windows-x64-setup.exe" }
 $Scratch = Join-Path $env:TEMP ("Replay setup's [acceptance] " + [Guid]::NewGuid().ToString("N"))
 $Standard = Join-Path $env:ProgramData "obs-studio/plugins/obs-multi-replay"
 $DiscoveryKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio"
@@ -18,6 +19,11 @@ $LegacySupport = Join-Path $env:ProgramFiles "OBS Multi-Length Replay"
 $Key = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS-Multi-Length-Replay_is1"
 if ((Test-Path -LiteralPath $Key) -or (Test-Path -LiteralPath $LegacySupport)) { throw "Use a disposable builder without legacy replay setup" }
 $LegacyCreated = $false
+$SetupSupport = Join-Path $env:ProgramFiles "OBS Multi Replay Buffer"
+$SetupKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS-Multi-Replay-Buffer_is1"
+$AppDiscoveryKey = "HKCU:\SOFTWARE\OBS Studio"
+$AppDiscoveryCreated = $false
+if ((Test-Path -LiteralPath $SetupKey) -or (Test-Path -LiteralPath $SetupSupport)) { throw "Use a disposable builder without an existing setup installation" }
 function Run-Package([string]$Action, [string]$Mode, [string]$Root, [int]$Expected = 0, [switch]$Cancel) {
     $Launcher = Join-Path $Package "$Action.cmd"
     $Command = '""' + $Launcher + '" -Mode ' + $Mode
@@ -41,6 +47,51 @@ function Run-Package([string]$Action, [string]$Mode, [string]$Root, [int]$Expect
     Write-Host $ErrorOutput.Result
     Check ($Process.ExitCode -eq $Expected) "$Action failed: expected $Expected, got $($Process.ExitCode)"
     $Process.Dispose()
+}
+function Run-Setup([string]$Executable, [string]$Arguments, [int]$Expected = 0) {
+    $Process = Start-Process -FilePath $Executable -ArgumentList $Arguments -PassThru
+    try {
+        if (!$Process.WaitForExit(120000)) { $Process.Kill(); throw "Setup timed out: $Arguments" }
+        Check ($Process.ExitCode -eq $Expected) "Setup failed: expected $Expected, got $($Process.ExitCode). See setup logs."
+    } finally { $Process.Dispose() }
+}
+function Run-InteractiveSetup([string]$Arguments) {
+    # Exercise the ordinary wizard, with no /SILENT or /ALLUSERS bypass.
+    # Hosted builders are already administrators; interactive UAC remains manual.
+    Add-Type -AssemblyName UIAutomationClient
+    Add-Type -AssemblyName UIAutomationTypes
+    $Process = Start-Process -FilePath $SetupPath -ArgumentList $Arguments -PassThru
+    $Deadline = [DateTime]::UtcNow.AddSeconds(120)
+    try {
+        while (!$Process.HasExited -and [DateTime]::UtcNow -lt $Deadline) {
+            Start-Sleep -Milliseconds 300
+            $Process.Refresh()
+            # Inno may launch its extracted child process, so locate by window name.
+            $Windows = [Windows.Automation.AutomationElement]::RootElement.FindAll(
+                [Windows.Automation.TreeScope]::Children,
+                (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, "Setup - OBS Multi-Length Replay")))
+            foreach ($Window in $Windows) {
+                $Buttons = $Window.FindAll([Windows.Automation.TreeScope]::Descendants,
+                    (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)))
+                foreach ($Button in $Buttons) {
+                    if ($Button.Current.IsEnabled -and $Button.Current.Name.Replace('&', '') -match '^(Next >|Install|Finish)$') {
+                        $Pattern = $Button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
+                        $Pattern.Invoke()
+                        break
+                    }
+                }
+                # The license acceptance radio button precedes the disabled Next button.
+                $Accept = $Window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                    (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, "I accept the agreement")))
+                if ($Accept) { $Accept.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select() }
+            }
+        }
+        Check $Process.HasExited "Interactive setup timed out; inspect its log and desktop session."
+        Check ($Process.ExitCode -eq 0) "Interactive setup failed: $($Process.ExitCode)"
+    } finally {
+        if (!$Process.HasExited) { $Process.Kill(); $Process.WaitForExit() }
+        $Process.Dispose()
+    }
 }
 try {
     New-Item -ItemType Directory -Path $Scratch | Out-Null
@@ -119,16 +170,24 @@ public static class ReplayDllProbe {
         $Writer.Dispose()
     }
     if ($SmokeObs) {
+        $Config = Join-Path $Obs "config/obs-studio"
+        $Initial = "[General]`nFirstRun=true`n[Basic]`nProfile=Test`nProfileDir=Test`nSceneCollection=Test`nSceneCollectionFile=Test`n"
+        [IO.File]::WriteAllText((Join-Path $Config "global.ini"), $Initial)
+        [IO.File]::WriteAllText((Join-Path $Config "user.ini"), $Initial + "[BasicWindow]`nPreviewEnabled=false`n")
         $Process = Start-Process (Join-Path $Obs "bin/64bit/obs64.exe") -WorkingDirectory (Join-Path $Obs "bin/64bit") `
             -ArgumentList '--portable --multi --disable-updater --disable-shutdown-check --disable-missing-files-check' -PassThru
         try {
             Start-Sleep -Seconds 10
-            $RuntimeLogs = Get-ChildItem (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt | Sort-Object LastWriteTime
+            $RuntimeLogs = @(Get-ChildItem -LiteralPath (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt | Sort-Object LastWriteTime)
             Check ($RuntimeLogs.Count -gt 0) "OBS did not write a startup log"
-            $Log = Get-Content $RuntimeLogs[-1].FullName -Raw
-            Check ($Log -match '\[multi-replay\]') "Plugin did not initialize in OBS"
+            $Log = Get-Content -LiteralPath $RuntimeLogs[-1].FullName -Raw
+            Check ($Log -match '\[multi-replay\] Replay dock and Tools settings ready; manual startup') "Plugin did not finish initializing in OBS"
+            Check ($Log -notmatch '\[multi-replay\] Session') "Replay unexpectedly started during OBS startup"
             Check ($Process.CloseMainWindow()) "Could not close isolated OBS normally"
             Check ($Process.WaitForExit(15000)) "OBS did not close normally"
+            Check ($Process.ExitCode -eq 0) "OBS exited with an error"
+            [IO.Directory]::CreateDirectory($Logs) | Out-Null
+            Copy-Item -LiteralPath $RuntimeLogs[-1].FullName -Destination (Join-Path $Logs "obs-startup-shutdown.log")
         } finally { if (!$Process.HasExited) { $Process.Kill(); $Process.WaitForExit() } }
     }
     $ProfileHash = (Get-FileHash -LiteralPath $Profile).Hash
@@ -161,12 +220,36 @@ public static class ReplayDllProbe {
     Check (!(Test-Path -LiteralPath $Key)) "Legacy Installed Apps entry survived update"
     Check (!(Test-Path -LiteralPath $LegacySupport)) "Legacy setup support survived update"
     Move-Item -LiteralPath (Join-Path $Package "PluginFiles/payload") -Destination (Join-Path $Package "PluginFiles/payload-unavailable")
+    $ObsExeBytes = [IO.File]::ReadAllBytes((Join-Path $Moved "bin/64bit/obs64.exe"))
     Remove-Item -LiteralPath (Join-Path $Moved "bin/64bit/obs64.exe")
     Run-Package "Uninstall" "Standard" ""
     Run-Package "Uninstall" "Standard" ""
     Check (!(Test-Path -LiteralPath $Standard)) "Standard uninstall left plugin"
     Check ((Get-FileHash -LiteralPath (Join-Path $Moved "config/obs-studio/basic/profiles/Test/basic.ini")).Hash -eq $ProfileHash) "Standard removal changed settings"
-    Write-Host "PASS: extracted CMD install/update/repair/cancel, dependency loading, portable relocation, EXE migration, removal without OBS/payload and settings preservation"
+    # A conventional EXE is the default for normal OBS. No portable marker here.
+    [IO.File]::WriteAllBytes((Join-Path $Moved "bin/64bit/obs64.exe"), $ObsExeBytes)
+    [IO.Directory]::CreateDirectory($Logs) | Out-Null
+    Run-Setup $SetupPath ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /OBSROOT="' + $Moved + '" /LOG="' + (Join-Path $Logs "exe-portable-refused.log") + '"') 5
+    Check (!(Test-Path -LiteralPath $Standard)) "Normal setup changed portable OBS"
+    Remove-Item -LiteralPath (Join-Path $Moved "portable_mode.txt")
+    if (!(Test-Path -LiteralPath $AppDiscoveryKey)) {
+        New-Item -Path $AppDiscoveryKey -Force | Out-Null
+        $AppDiscoveryCreated = $true
+        Set-Item -LiteralPath $AppDiscoveryKey -Value $Moved
+        # No explicit OBSROOT: exercise the application registry's default value.
+        Run-InteractiveSetup ('/NORESTART /LOG="' + (Join-Path $Logs "exe-interactive.log") + '"')
+    } else {
+        Run-InteractiveSetup ('/NORESTART /OBSROOT="' + $Moved + '" /LOG="' + (Join-Path $Logs "exe-interactive.log") + '"')
+    }
+    Check (Test-Path -LiteralPath (Join-Path $Standard "bin/64bit/obs-multi-replay.dll")) "Interactive EXE installation missing"
+    Check (Test-Path -LiteralPath $SetupKey) "Installed Apps registration missing"
+    Run-Setup $SetupPath ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /OBSROOT="' + $Moved + '" /LOG="' + (Join-Path $Logs "exe-repair.log") + '"')
+    Remove-Item -LiteralPath (Join-Path $Moved "bin/64bit/obs64.exe")
+    Run-Setup (Join-Path $SetupSupport "unins000.exe") ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="' + (Join-Path $Logs "exe-uninstall.log") + '"')
+    Check (!(Test-Path -LiteralPath $Standard)) "EXE removal left plugin files"
+    Check (!(Test-Path -LiteralPath $SetupKey)) "EXE removal left Installed Apps registration"
+    Check ((Get-FileHash -LiteralPath (Join-Path $Moved "config/obs-studio/basic/profiles/Test/basic.ini")).Hash -eq $ProfileHash) "EXE changed settings"
+    Write-Host "PASS: extracted CMD transactions/dependencies, ordinary EXE wizard, EXE repair/registration/removal, portable relocation and settings preservation"
 } finally {
     $PackageLogs = Join-Path $Package "PluginFiles/Logs"
     if (Test-Path -LiteralPath $PackageLogs) {
@@ -176,6 +259,7 @@ public static class ReplayDllProbe {
     if ($LegacyCreated -and (Test-Path -LiteralPath $Key)) { Remove-Item -LiteralPath $Key -Force }
     if ($LegacyCreated -and (Test-Path -LiteralPath $LegacySupport)) { Remove-Item -LiteralPath $LegacySupport -Recurse -Force }
     if ($DiscoveryKeyCreated) { Remove-Item -LiteralPath $DiscoveryKey -Force }
+    if ($AppDiscoveryCreated) { Remove-Item -LiteralPath $AppDiscoveryKey -Force }
     # Do not silently erase a failed installation: keep it for inspection.
     if (!(Test-Path -LiteralPath $Standard)) { Remove-Item -LiteralPath $Scratch -Recurse -Force -ErrorAction SilentlyContinue }
 }

@@ -63,4 +63,5 @@ foreach ($Dependency in @($ObsDeps, $QtDeps)) {
     }
 }
 & (Join-Path $Repo "scripts/package-windows.ps1") -PackagePath $Package -Version $Version
+& (Join-Path $Repo "scripts/package-windows-setup.ps1")
 Write-Host "Built Windows package. Native OBS integration acceptance tests still need to be run on Windows."

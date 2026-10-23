@@ -4,7 +4,7 @@
 
 The project uses C++17, CMake, libobs/the OBS frontend API, Qt 6 Widgets, and FFmpeg libraries. The module retains encoded packets; a separate helper writes MKV files. It does not invoke an external FFmpeg encoder to save replays.
 
-There is no published release. Graphical installers and CI artifacts are available for experimental testing; see [installer instructions](INSTALLERS.md). The commands below build the plugin and offline packages. Tag automation creates only an unpublished draft prerelease.
+Installers and CI artifacts are experimental; see [installer instructions](INSTALLERS.md). The commands below build the plugin and offline packages. Tag automation creates only an unpublished draft prerelease.
 
 ## Get the source
 
@@ -94,7 +94,7 @@ It installs under `~/.config/obs-studio/plugins/obs-multi-replay/`, using the sa
 
 ## Windows x64
 
-Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK, Git, CMake 3.28 or newer. Run from the repository root in PowerShell:
+Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK, Git, CMake 3.28 or newer, and Inno Setup 6 (CI pins 6.7.3). Run from the repository root in PowerShell:
 
 ```powershell
 ./scripts/build-windows.ps1
@@ -102,7 +102,7 @@ Install Visual Studio 2022 with **Desktop development with C++**, a Windows SDK,
 
 The script obtains OBS 32.1.1 source and its pinned Windows/Qt dependencies, builds an OBS SDK, builds the plugin/helper, runs CTest, and creates a setup EXE and development ZIPs under `dist/`. Downloads require internet access. `-ObsSource` and `-Sdk` can point to existing compatible development trees; the matching dependency archives must still be present in the OBS source tree.
 
-The helper's FFmpeg and release MSVC runtime files are staged with it. One offline script-installer ZIP is produced, with three top-level files and `PluginFiles`. The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/39344761328) passed the MSVC build, core tests, installer fixtures, and packaging. Those checks are not native Windows OBS acceptance.
+The helper's FFmpeg and release MSVC runtime files are staged with it. An offline normal-OBS setup EXE and a separate portable script ZIP are produced. The ZIP has three top-level files and `PluginFiles`. The [publication CI run](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/39344761328) passed the MSVC build, core tests, installer fixtures, and packaging. Those checks are not native Windows OBS acceptance.
 
 The Windows archive provides `Install.cmd` and `Uninstall.cmd`; their shared console backend is inside `PluginFiles`. Choose normal or portable OBS interactively, or pass `-Mode Standard|Portable -ObsRoot "path" -NonInteractive` for CI. Run noninteractive standard/protected operations from an elevated shell. Logs stay in `PluginFiles/Logs`. Normal installation targets `C:\ProgramData\obs-studio\plugins\obs-multi-replay`; portable installation targets the selected OBS tree. Use `tests/windows_package_tests.ps1` only on a disposable Windows builder: it installs into ProgramData and exercises the actual archived CMD launchers.
 
@@ -202,6 +202,6 @@ It creates ZIP/tar source snapshots, a Git bundle, and checksums. It includes no
 
 [Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) retains Fedora/MSVC core builds and fixture checks. Windows also tests the extracted CMD package against an official checksum-pinned OBS runtime, including actual DLL/writer loading, EXE migration, relocation, cancellation, corrupted payload refusal and removal without OBS/payload. Linux runs transaction/package tests on Fedora and Ubuntu; Ubuntu builds the production archive against the pinned Flatpak SDK and tests shell install/repair/removal with isolated user files, followed by an isolated OBS load/shutdown smoke.
 
-Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. `bash scripts/build-flatpak.sh` produces the payload and four-entry tar archive. `python3 scripts/package_linux.py` repackages an existing validated payload. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
+Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. Both a single-file `.run` and the extracted tar format are produced. `bash scripts/build-flatpak.sh` produces the payload and four-entry tar archive. `python3 scripts/package_linux.py` repackages an existing validated payload. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
 
-Version tags matching CMake create unpublished draft prereleases with both archives, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks.
+Version tags matching CMake create unpublished draft prereleases with the Windows setup/ZIP and Linux run/tar assets, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks. The 0.1.2 local changes and unrun acceptance checks are recorded in [INSTALLER_REVIEW.md](INSTALLER_REVIEW.md).

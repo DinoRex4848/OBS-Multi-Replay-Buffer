@@ -1,4 +1,8 @@
-OBS Multi-Length Replay - Windows x64
+OBS Multi-Length Replay - Windows x64 ZIP (portable OBS)
+
+For normally installed OBS, use the separate offline -setup.exe download and
+remove through Windows Installed Apps. This ZIP remains available for portable
+OBS and existing script automation. Choose Portable when installing portable OBS.
 
 1. Close OBS and extract this entire ZIP into a writable folder.
 2. Double-click Install.cmd. Choose normal or portable OBS, then confirm.

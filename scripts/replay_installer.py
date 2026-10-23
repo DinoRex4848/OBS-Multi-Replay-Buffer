@@ -48,7 +48,9 @@ def check_target(manifest):
     rows = host_run(["flatpak", "list", "--app", "--columns=application,arch,branch,installation"]).splitlines()
     matches = [row.split("\t") for row in rows if row.split("\t")[0] == APP]
     if not matches:
-        raise RuntimeError("Flatpak OBS Studio is not installed. Install it before running setup.")
+        raise RuntimeError("Flatpak OBS Studio is not installed. This package cannot install into native RPM/deb OBS. "
+                           "Use a plugin build matching your native distribution, or install Flatpak OBS first. "
+                           "Your existing OBS configuration has not been changed.")
     if len(matches) != 1:
         raise RuntimeError("Multiple Flatpak OBS installations were found. Keep one user/system/branch installation before running setup.")
     _, arch, branch, installation = matches[0]

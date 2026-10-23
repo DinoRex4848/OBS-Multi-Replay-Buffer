@@ -1,5 +1,10 @@
 OBS Multi-Length Replay - Linux x86_64 / Flatpak OBS
 
+The separate .run download offers the same offline installer without extraction:
+sh ./obs-multi-replay-VERSION-linux-flatpak-x86_64.run
+Add --uninstall for removal. Its logs persist under ~/.local/state/obs-multi-replay/logs
+(or XDG_STATE_HOME). This tar archive remains an alternative extracted package.
+
 1. Close OBS. Extract this entire archive into a writable folder.
 2. Open a terminal in the extracted folder and run: sh ./install.sh
 3. Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings.

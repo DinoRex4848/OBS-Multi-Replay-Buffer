@@ -36,6 +36,7 @@ try {
     # Parse every shipped script too; catches syntax errors before a Windows build.
     $Scripts = @(Get-ChildItem -LiteralPath (Join-Path $Repo "packaging/windows") -Filter *.ps1)
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/package-windows.ps1")
+    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/package-windows-setup.ps1")
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/build-windows.ps1")
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "tests/windows_package_tests.ps1")
     foreach ($Script in $Scripts) {
@@ -43,6 +44,11 @@ try {
         [Management.Automation.Language.Parser]::ParseFile($Script.FullName, [ref]$Tokens, [ref]$Errors) | Out-Null
         Check ($Errors.Count -eq 0) "Parse error in $($Script.FullName): $Errors"
     }
+    # Guard the reported startup deadlock: never reintroduce a waiting, mutex-owning
+    # setup process that launches another copy to elevate partway through the wizard.
+    $SetupText = Get-Content -LiteralPath (Join-Path $Repo "packaging/windows/setup.iss") -Raw
+    Check ($SetupText -match '(?m)^PrivilegesRequired=admin\s*$') "Normal setup must elevate at startup"
+    Check ($SetupText -notmatch 'Setup\.Relaunch|\{srcexe\}|PrivilegesRequiredOverridesAllowed') "Setup must not relaunch itself or override startup elevation"
     $Stage = Join-Path $Temp "fixture-stage"
     $Dll = Join-Path $Stage "obs-plugins/64bit/obs-multi-replay.dll"
     $Data = Join-Path $Stage "data/obs-plugins/obs-multi-replay"
@@ -57,6 +63,15 @@ try {
     $Kit = Join-Path $ArchiveRoot "PluginFiles"
     $Payload = Join-Path $Kit "payload/obs-multi-replay"
     Assert-ReplayPackage $Kit | Out-Null
+    # Detection must skip stale paths and accept a custom registered OBS folder.
+    $DetectedRoot = Join-Path $Temp "Custom OBS"
+    [IO.Directory]::CreateDirectory((Join-Path $DetectedRoot "bin/64bit")) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $DetectedRoot "bin/64bit/obs64.exe"), "detection fixture only")
+    $global:ReplayDetectionRoot = $DetectedRoot
+    function Get-ReplayObsCandidates { @("/missing-obsolete-obs", $global:ReplayDetectionRoot) }
+    Check ((Find-ReplayObs) -eq $DetectedRoot) "Custom OBS detection failed"
+    Remove-Item Function:\Get-ReplayObsCandidates
+    . (Join-Path $Repo "packaging/windows/Installer.Core.ps1")
     $PackageVersion = (Assert-ReplayPackage $Kit).version
     $ZipPath = Join-Path $Out "obs-multi-replay-$PackageVersion-windows-x64.zip"
     Check (Test-Path -LiteralPath $ZipPath) "Installer ZIP missing"
@@ -76,6 +91,13 @@ try {
     $Profile = Join-Path $Temp "profiles/basic.ini"
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Profile)) | Out-Null
     [IO.File]::WriteAllText($Profile, "DO NOT CHANGE PROFILE")
+    $Preserved = @{}
+    foreach ($Name in @("config/obs-studio/basic/scenes/Friends.json", "config/obs-studio/hotkeys.ini", "recordings/keep.mkv")) {
+        $Path = Join-Path (Join-Path $Temp "portable OBS") $Name
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $Path)) | Out-Null
+        [IO.File]::WriteAllText($Path, "Preserve $Name")
+        $Preserved[$Path] = (Get-FileHash -LiteralPath $Path).Hash
+    }
     $Other = Join-Path (Split-Path -Parent $Installed) "another-plugin/keep.txt"
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Other)) | Out-Null
     [IO.File]::WriteAllText($Other, "DO NOT CHANGE OTHER PLUGIN")
@@ -165,6 +187,7 @@ try {
     Check (!(Test-Path -LiteralPath $PortableDll)) "Uninstall left the portable DLL"
     Check ([IO.File]::ReadAllText($Profile) -eq "DO NOT CHANGE PROFILE") "Profile changed"
     Check ([IO.File]::ReadAllText($Other) -eq "DO NOT CHANGE OTHER PLUGIN") "Other plugin changed"
+    foreach ($Path in $Preserved.Keys) { Check ((Get-FileHash -LiteralPath $Path).Hash -eq $Preserved[$Path]) "Changed user file: $Path" }
     $MissingObs = Join-Path $Temp "removed OBS"
     Set-ReplayInstallTargets @(@{ Path = (Join-Path $MissingObs "obs-plugins/64bit/obs-multi-replay.dll"); Source = $null })
     Check (!(Test-Path -LiteralPath $MissingObs)) "Uninstall recreated a removed OBS folder"

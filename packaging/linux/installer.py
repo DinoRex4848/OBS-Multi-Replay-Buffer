@@ -63,17 +63,18 @@ def run(args, private):
 
 def main():
     private = pathlib.Path(__file__).resolve().parent
-    logs = private / "Logs"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--action", choices=("install", "uninstall"), required=True)
+    parser.add_argument("--non-interactive", action="store_true", help="Confirm the operation without prompts or closing pauses")
+    parser.add_argument("--log-directory", type=pathlib.Path, default=private / "Logs", help="Directory for persistent diagnostic logs")
+    args = parser.parse_args()
+    logs = args.log_directory
     try:
         core.reject_symlinks(logs)
-        logs.mkdir(exist_ok=True)
+        logs.mkdir(parents=True, exist_ok=True)
         path = logs / (datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8] + ".log")
         with path.open("x") as log, contextlib.redirect_stdout(Tee(sys.stdout, log)), contextlib.redirect_stderr(Tee(sys.stderr, log)):
             print(f"OBS Multi-Length Replay\nLog: {path}")
-            parser = argparse.ArgumentParser(description=__doc__)
-            parser.add_argument("--action", choices=("install", "uninstall"), required=True)
-            parser.add_argument("--non-interactive", action="store_true", help="Confirm the operation without prompts or closing pauses")
-            args = parser.parse_args()
             try:
                 return run(args, private)
             except (EOFError, KeyboardInterrupt):
@@ -84,7 +85,7 @@ def main():
                 traceback.print_exc(file=log)
                 return 1
     except OSError as error:
-        print(f"ERROR: Could not create a log: {error}. Extract the entire archive into a writable folder.", file=sys.stderr)
+        print(f"ERROR: Could not create a log in {logs}: {error}. Check the directory's permissions.", file=sys.stderr)
         return 1
 
 

@@ -54,6 +54,13 @@ class PackageTests(unittest.TestCase):
         self.profile.parent.mkdir(parents=True)
         self.profile.write_bytes(b'[MultiLengthReplay]\r\nSettings={"keep":true}\r\n')
         self.profile_hash = hashlib.sha256(self.profile.read_bytes()).hexdigest()
+        self.preserved = {}
+        for name, data in (('basic/scenes/Friends.json', b'{"sources":[],"hotkeys":{"keep":true}}'),
+                           ('user.ini', b'[Hotkeys]\nKEEP=1\n'), ('recordings/keep.mkv', b'original recording')):
+            path = self.config / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            self.preserved[path] = data
         self.other = self.target.parent / 'unrelated-plugin'
         self.other.mkdir()
         (self.other / 'keep.txt').write_text('other plugin')
@@ -82,6 +89,8 @@ esac
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         self.assertEqual(hashlib.sha256(self.profile.read_bytes()).hexdigest(), self.profile_hash)
         self.assertEqual((self.other / 'keep.txt').read_text(), 'other plugin')
+        for path, data in self.preserved.items():
+            self.assertEqual(path.read_bytes(), data)
         return result
 
     def test_archive_contract_and_modes(self):
@@ -148,6 +157,52 @@ esac
         self.assertIn('without sudo', self.run_script(expected=1, SUDO_USER='test').stderr)
         self.assertTrue((self.target / 'legacy.txt').exists())
 
+    def run_bundle(self, *arguments, expected=0, answer='', path=None, **environment):
+        path = path or self.archive.with_name(self.archive.name.removesuffix('.tar.gz') + '.run')
+        result = subprocess.run(['/bin/sh', str(path), *arguments], input=answer, text=True,
+                                capture_output=True, cwd=self.root, env=dict(self.env, **environment), timeout=20)
+        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        self.assertEqual(hashlib.sha256(self.profile.read_bytes()).hexdigest(), self.profile_hash)
+        self.assertEqual((self.other / 'keep.txt').read_text(), 'other plugin')
+        for path, data in self.preserved.items():
+            self.assertEqual(path.read_bytes(), data)
+        return result
+
+    def test_single_file_install_repair_uninstall_and_persistent_logs(self):
+        self.assertIn('Update', self.run_bundle('--non-interactive').stdout)
+        self.assertIn('Repair', self.run_bundle('--non-interactive').stdout)
+        self.run_bundle('--uninstall', '--non-interactive')
+        self.run_bundle('--uninstall', '--non-interactive')
+        self.assertFalse(self.target.exists())
+        self.assertEqual(len(list((self.home / '.local/state/obs-multi-replay/logs').glob('*.log'))), 4)
+
+    def test_single_file_prompt_retains_stdin_and_cancel_is_safe(self):
+        self.assertIn('Cancelled', self.run_bundle(answer='n\n').stdout)
+        self.assertTrue((self.target / 'legacy.txt').exists())
+        self.assertIn('Complete', self.run_bundle(answer='y\n').stdout)
+
+    def test_single_file_corruption_refused_before_plugin_change(self):
+        path = self.archive.with_name(self.archive.name.removesuffix('.tar.gz') + '.run')
+        with path.open('ab') as stream:
+            stream.write(b'damage')
+        self.assertIn('damaged', self.run_bundle('--non-interactive', expected=1).stderr)
+        self.assertTrue((self.target / 'legacy.txt').exists())
+
+    def test_single_file_mismatch_and_sudo_refused(self):
+        self.assertIn('Installed commit', self.run_bundle('--non-interactive', expected=1, FAKE_COMMIT='b' * 64).stderr)
+        self.assertIn('without sudo', self.run_bundle('--non-interactive', expected=1, SUDO_USER='test').stderr)
+        self.assertTrue((self.target / 'legacy.txt').exists())
+
+    def test_single_file_refuses_unsafe_archive(self):
+        from package_linux import package_run
+        malicious = self.root / 'unsafe.tar.gz'
+        with tarfile.open(malicious, 'w:gz') as archive:
+            entry = tarfile.TarInfo('../escape')
+            archive.addfile(entry)
+        self.assertIn('Unsafe', self.run_bundle('--non-interactive', expected=1, path=package_run(malicious)).stderr)
+        self.assertFalse((self.root / 'escape').exists())
+        self.assertTrue((self.target / 'legacy.txt').exists())
+
 
 def check_production_archive(path):
     # Validate the actual build, then run its launchers with isolated user files.
@@ -171,7 +226,7 @@ def check_production_archive(path):
         other = config / 'plugins/other-plugin.txt'
         other.parent.mkdir(parents=True)
         other.write_text('preserve')
-        env = dict(os.environ, HOME=str(home),
+        env = dict(os.environ, HOME=str(home), XDG_STATE_HOME=str(home / '.local/state'),
                    XDG_DATA_HOME=os.environ.get('XDG_DATA_HOME', str(pathlib.Path.home() / '.local/share')))
         env.pop('SUDO_USER', None)
         env.pop('SUDO_UID', None)
@@ -188,8 +243,15 @@ def check_production_archive(path):
         run('uninstall.sh')
         run('uninstall.sh')
         assert not target.exists()
+        bundle = path.with_name(path.name.removesuffix('.tar.gz') + '.run')
+        for arguments in ([], [], ['--uninstall'], ['--uninstall']):
+            subprocess.run(['/bin/sh', str(bundle), '--non-interactive', *arguments], env=env, check=True, timeout=60)
+            assert profile.read_bytes() == original
+            assert other.read_text() == 'preserve'
+        assert not target.exists()
+        assert len(list((home / '.local/state/obs-multi-replay/logs').glob('*.log'))) == 4
         assert {p.name for p in extracted.iterdir()} == {'install.sh', 'uninstall.sh', 'README.txt', 'PluginFiles'}
-        print('PASS: production tar archive, shell install/repair/removal, real Flatpak compatibility, payload hashes and isolated configuration')
+        print('PASS: production tar and single-file installers, install/repair/removal, real Flatpak compatibility, payload hashes and isolated configuration')
 
 
 if __name__ == '__main__':

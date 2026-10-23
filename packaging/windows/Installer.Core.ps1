@@ -195,15 +195,28 @@ function Set-ReplayInstallTargets {
     }
 }
 
-function Find-ReplayObs {
+function Get-ReplayObsCandidates {
     $Candidates = @()
+    # OBS's installer has used the default value of SOFTWARE\OBS Studio.
+    # Also accept InstallLocation from uninstall registrations and both views.
+    foreach ($Hive in @("HKLM", "HKCU")) {
+        foreach ($Subkey in @("SOFTWARE\OBS Studio", "SOFTWARE\WOW6432Node\OBS Studio")) {
+            $Item = Get-Item -LiteralPath ($Hive + ":\" + $Subkey) -ErrorAction SilentlyContinue
+            if ($Item) { $Candidates += $Item.GetValue("") }
+        }
+    }
     foreach ($Key in @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio",
+                       "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio",
                        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio")) {
         $Item = Get-ItemProperty -LiteralPath $Key -ErrorAction SilentlyContinue
         if ($Item -and $Item.PSObject.Properties["InstallLocation"]) { $Candidates += $Item.InstallLocation }
     }
     $Candidates += Join-Path $env:ProgramFiles "obs-studio"
-    foreach ($Path in $Candidates) {
+    return $Candidates
+}
+
+function Find-ReplayObs {
+    foreach ($Path in Get-ReplayObsCandidates) {
         if ($Path -and (Test-Path -LiteralPath (Join-Path $Path "bin/64bit/obs64.exe"))) { return $Path }
     }
     return ""

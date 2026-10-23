@@ -46,6 +46,13 @@ class ReleaseTests(unittest.TestCase):
                         entry.mode = 0o755 if name.endswith(".sh") else 0o644
                         archive.addfile(entry, io.BytesIO(data))
             path.with_name(path.name + ".sha256").write_text(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n")
+        setup = self.root / f"obs-multi-replay-{release.version()}-windows-x64-setup.exe"
+        setup.write_bytes(b'MZ fixture only; never executable')
+        import sys
+        sys.path.insert(0, str(release.REPO / 'scripts'))
+        from package_linux import package_run
+        package_run(self.root / f"obs-multi-replay-{release.version()}-linux-flatpak-x86_64.tar.gz")
+        setup.with_name(setup.name + '.sha256').write_text(hashlib.sha256(setup.read_bytes()).hexdigest() + '  ' + setup.name + '\n')
         for name in ("linux-installer-notices.txt", "windows-installer-notices.txt"):
             (self.root / name).write_text("fixture notices")
         (self.root / "linux-build.json").write_text(json.dumps({"obs_version": "32.2.2", "app_commit": "a" * 64}))
@@ -57,7 +64,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_both_assets_and_notices_required(self):
         files, body = release.prepare(self.root)
-        self.assertEqual(len(files), 9)
+        self.assertEqual(len(files), 13)
         self.assertIn("32.2.2", body.read_text())
         (self.root / "windows-installer-notices.txt").unlink()
         with self.assertRaisesRegex(RuntimeError, "Missing release"):
@@ -67,6 +74,18 @@ class ReleaseTests(unittest.TestCase):
         path = next(self.root.glob("*.zip"))
         path.write_bytes(b"damaged")
         with self.assertRaisesRegex(RuntimeError, "Checksum mismatch"):
+            release.prepare(self.root)
+
+    def test_single_file_must_embed_validated_tar(self):
+        path = next(self.root.glob('*.run'))
+        path.write_bytes(path.read_bytes() + b'damage')
+        path.with_name(path.name + '.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n')
+        with self.assertRaisesRegex(RuntimeError, 'differs from'):
+            release.prepare(self.root)
+
+    def test_setup_required(self):
+        next(self.root.glob('*-setup.exe')).unlink()
+        with self.assertRaises(FileNotFoundError):
             release.prepare(self.root)
 
     def test_wrong_archive_layout_refused(self):
