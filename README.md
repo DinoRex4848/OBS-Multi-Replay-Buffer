@@ -5,7 +5,7 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 [![Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml/badge.svg)](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml)
 [Installer instructions](docs/INSTALLERS.md) · [User guide](docs/USER_GUIDE.md) · [Build from source](docs/DEVELOPMENT.md) · [Validation and limitations](docs/VALIDATION.md) · [Changelog](CHANGELOG.md)
 
-**Experimental — installers under validation.** Version `0.1.2` adds an offline Windows setup and a single-file Linux Flatpak installer. Native Windows acceptance of this revision is still pending. Release automation prepares an unpublished draft for testing.
+**Experimental — installers under validation.** Version `0.1.2` provides simple Windows batch installers and a single-file Linux Flatpak installer. Native acceptance of the latest batch package is pending CI. Release automation prepares an unpublished draft for testing.
 
 <p align="center">
   <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three preset save buttons, Start Buffering, and Settings" width="360">
@@ -27,8 +27,8 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 
 Close OBS, then choose the download for your OBS installation from a successful [Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) run:
 
-- **Normally installed Windows OBS:** double-click `obs-multi-replay-0.1.2-windows-x64-setup.exe`, approve the initial administrator prompt, check the detected OBS folder, then install. Remove through Windows **Installed Apps**.
-- **Portable Windows OBS:** extract the entire Windows ZIP, run `Install.cmd`, and choose **Portable** and your OBS folder. Use `Uninstall.cmd` for removal.
+- **Normally installed Windows OBS:** extract the entire Windows ZIP, double-click `install.bat`, accept **Normal** (the default), check the detected OBS folder, and confirm. Approve administrator access when requested. Run `uninstall.bat` to remove the plugin.
+- **Portable Windows OBS:** extract the entire Windows ZIP, run `install.bat`, and choose **Portable** and your OBS folder. Use `uninstall.bat` for removal.
 - **Linux Flatpak OBS:** run `sh ./obs-multi-replay-0.1.2-linux-flatpak-x86_64.run` in a terminal, without sudo. Add `--uninstall` for removal. Python 3.10+ and a matching x86_64 Flatpak OBS are required.
 - **Native Linux RPM/deb OBS:** the Flatpak installer cannot install into native OBS. Fedora 44 has a separate developer build path; a general native Linux installer is not offered.
 
@@ -40,7 +40,7 @@ Run the same installer again to update or repair. Profiles, scenes, replay setti
 | --- | --- | --- |
 | Linux x86_64, Flatpak OBS | Latest local build and runtime testing targets OBS 32.2.2 | Matching Freedesktop 25.08 SDK; OBS-provided Qt 6 and FFmpeg 8 |
 | Linux x86_64, Fedora RPM OBS | Historical runtime testing on Fedora 44 with OBS 32.1.1; Fedora build CI included | OBS/Qt development packages and FFmpeg 8 |
-| Windows 10/11 x64 | Previous MSVC/CMD/dependency checks passed; new EXE native acceptance and real OBS capture remain outstanding | Visual Studio 2022 and the OBS 32.1.1 SDK |
+| Windows 10/11 x64 | MSVC and batch fixtures/dependency checks passed; latest BAT/OBS startup acceptance is pending, real capture remains outstanding | Visual Studio 2022 and the OBS 32.1.1 SDK |
 
 The plugin checks for OBS **32.1 or newer**, but that is not a guarantee of compatibility with every newer version. NVIDIA AV1, H.264, and HEVC with SDR and multiple FLAC tracks have the strongest Linux evidence. Other platforms, encoders, and recording modes need further testing. Read the [validation summary](docs/VALIDATION.md) for what was actually exercised.
 

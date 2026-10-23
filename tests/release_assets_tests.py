@@ -32,7 +32,7 @@ class ReleaseTests(unittest.TestCase):
             content = {prefix + "data/test": b"fixture", "README.txt": b"fixture README"}
             manifest_name = "PluginFiles/package.json" if windows else prefix + "manifest.json"
             content[manifest_name] = json.dumps(manifest).encode()
-            for name in (("Install.cmd", "Uninstall.cmd") if windows else ("install.sh", "uninstall.sh")):
+            for name in (("install.bat", "uninstall.bat") if windows else ("install.sh", "uninstall.sh")):
                 content[name] = b"@echo off\r\n" if windows else b"#!/bin/sh\n"
             if windows:
                 with zipfile.ZipFile(path, "w") as archive:
@@ -46,13 +46,10 @@ class ReleaseTests(unittest.TestCase):
                         entry.mode = 0o755 if name.endswith(".sh") else 0o644
                         archive.addfile(entry, io.BytesIO(data))
             path.with_name(path.name + ".sha256").write_text(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n")
-        setup = self.root / f"obs-multi-replay-{release.version()}-windows-x64-setup.exe"
-        setup.write_bytes(b'MZ fixture only; never executable')
         import sys
         sys.path.insert(0, str(release.REPO / 'scripts'))
         from package_linux import package_run
         package_run(self.root / f"obs-multi-replay-{release.version()}-linux-flatpak-x86_64.tar.gz")
-        setup.with_name(setup.name + '.sha256').write_text(hashlib.sha256(setup.read_bytes()).hexdigest() + '  ' + setup.name + '\n')
         for name in ("linux-installer-notices.txt", "windows-installer-notices.txt"):
             (self.root / name).write_text("fixture notices")
         (self.root / "linux-build.json").write_text(json.dumps({"obs_version": "32.2.2", "app_commit": "a" * 64}))
@@ -62,9 +59,9 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "does not match"):
             release.check_tag("refs/tags/v999.0.0")
 
-    def test_both_assets_and_notices_required(self):
+    def test_all_assets_and_notices_required(self):
         files, body = release.prepare(self.root)
-        self.assertEqual(len(files), 13)
+        self.assertEqual(len(files), 11)
         self.assertIn("32.2.2", body.read_text())
         (self.root / "windows-installer-notices.txt").unlink()
         with self.assertRaisesRegex(RuntimeError, "Missing release"):
@@ -81,11 +78,6 @@ class ReleaseTests(unittest.TestCase):
         path.write_bytes(path.read_bytes() + b'damage')
         path.with_name(path.name + '.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n')
         with self.assertRaisesRegex(RuntimeError, 'differs from'):
-            release.prepare(self.root)
-
-    def test_setup_required(self):
-        next(self.root.glob('*-setup.exe')).unlink()
-        with self.assertRaises(FileNotFoundError):
             release.prepare(self.root)
 
     def test_wrong_archive_layout_refused(self):

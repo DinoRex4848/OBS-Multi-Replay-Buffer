@@ -36,7 +36,6 @@ try {
     # Parse every shipped script too; catches syntax errors before a Windows build.
     $Scripts = @(Get-ChildItem -LiteralPath (Join-Path $Repo "packaging/windows") -Filter *.ps1)
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/package-windows.ps1")
-    $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/package-windows-setup.ps1")
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "scripts/build-windows.ps1")
     $Scripts += Get-Item -LiteralPath (Join-Path $Repo "tests/windows_package_tests.ps1")
     foreach ($Script in $Scripts) {
@@ -44,11 +43,6 @@ try {
         [Management.Automation.Language.Parser]::ParseFile($Script.FullName, [ref]$Tokens, [ref]$Errors) | Out-Null
         Check ($Errors.Count -eq 0) "Parse error in $($Script.FullName): $Errors"
     }
-    # Guard the reported startup deadlock: never reintroduce a waiting, mutex-owning
-    # setup process that launches another copy to elevate partway through the wizard.
-    $SetupText = Get-Content -LiteralPath (Join-Path $Repo "packaging/windows/setup.iss") -Raw
-    Check ($SetupText -match '(?m)^PrivilegesRequired=admin\s*$') "Normal setup must elevate at startup"
-    Check ($SetupText -notmatch 'Setup\.Relaunch|\{srcexe\}|PrivilegesRequiredOverridesAllowed') "Setup must not relaunch itself or override startup elevation"
     $Stage = Join-Path $Temp "fixture-stage"
     $Dll = Join-Path $Stage "obs-plugins/64bit/obs-multi-replay.dll"
     $Data = Join-Path $Stage "data/obs-plugins/obs-multi-replay"
@@ -78,13 +72,13 @@ try {
     $Zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
         $Roots = @($Zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/').Split('/')[0] } | Sort-Object -Unique)
-        Check (($Roots -join ',') -eq "Install.cmd,PluginFiles,README.txt,Uninstall.cmd") "ZIP must contain exactly three files and PluginFiles"
+        Check (($Roots -join ',') -eq "install.bat,PluginFiles,README.txt,uninstall.bat") "ZIP must contain exactly three files and PluginFiles"
         # Windows PowerShell may use backslashes in ZIP entries; compare logical paths.
-        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "Install.cmd" }).Count -eq 1) "ZIP launcher missing"
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "install.bat" }).Count -eq 1) "ZIP launcher missing"
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "PluginFiles/payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "PluginFiles/package.json" }).Count -eq 1) "ZIP manifest missing"
     } finally { $Zip.Dispose() }
-    Check (Test-Path -LiteralPath (Join-Path $ArchiveRoot "Install.cmd")) "Launcher missing"
+    Check (Test-Path -LiteralPath (Join-Path $ArchiveRoot "install.bat")) "Launcher missing"
     $ManifestPath = Join-Path $Kit "package.json"
     $ManifestText = Get-Content -LiteralPath $ManifestPath -Raw
     $Installed = Join-Path $Temp "Friend's [OBS] & Files/plugins/obs-multi-replay"

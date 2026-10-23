@@ -39,7 +39,7 @@ $Notices = Join-Path $PackagePath "third-party-notices"
 if (Test-Path -LiteralPath $Notices) {
     Copy-Item -LiteralPath $Notices -Destination (Join-Path $Payload "data/third-party-notices") -Recurse
 }
-foreach ($Name in @("Install.cmd", "Uninstall.cmd")) {
+foreach ($Name in @("install.bat", "uninstall.bat")) {
     Copy-Item -LiteralPath (Join-Path $Templates $Name) -Destination (Join-Path $Kit $Name)
 }
 Copy-Item -LiteralPath (Join-Path $Templates "READ-ME-FIRST.txt") -Destination (Join-Path $Kit "README.txt")

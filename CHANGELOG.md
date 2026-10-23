@@ -2,10 +2,10 @@
 
 ## 0.1.2 — local installer candidate
 
-- Add a conventional offline Windows setup with elevation at startup, normal OBS detection, and Installed Apps removal; keep portable OBS separate.
+- Provide simple install.bat/uninstall.bat launchers with normal/portable OBS detection, elevation only as needed, and preserved transaction safeguards.
 - Add a single-file offline Linux Flatpak installer with persistent logs and archive integrity checks, retaining exact OBS commit/ABI restrictions.
-- Exercise the ordinary Windows wizard and isolated OBS startup in CI; retain transaction, rollback and settings-preservation checks.
-- Require setup, portable ZIP and both Linux formats in draft-release validation. This candidate has not been pushed, tagged or published.
+- Exercise the extracted Windows BAT package and isolated OBS startup in CI; retain transaction, rollback and settings-preservation checks.
+- Require the Windows ZIP and both Linux formats in draft-release validation. This candidate is under review in draft PR #1; it has not been merged, tagged or released.
 
 ## 0.1.1 (draft testing build)
 

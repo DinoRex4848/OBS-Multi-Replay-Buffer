@@ -41,6 +41,13 @@ try {
         if (!$ObsRoot) { throw [OperationCanceledException]::new("Cancelled. No plugin files were changed.") }
     }
     if ($ObsRoot) { $ObsRoot = [IO.Path]::GetFullPath($ObsRoot); Assert-ReplaySafePath $ObsRoot }
+    if ($Action -eq "Install" -and $Mode -eq "Standard" -and $ObsRoot) {
+        foreach ($Marker in @("portable_mode", "portable_mode.txt", "obs_portable_mode", "obs_portable_mode.txt")) {
+            if (Test-Path -LiteralPath (Join-Path $ObsRoot $Marker)) {
+                throw "This OBS folder is portable. Run install.bat again and choose Portable."
+            }
+        }
+    }
     if ($Action -eq "Install") {
         Write-ReplayMessage (Invoke-ReplaySetup "Inspect" $Mode $ObsRoot $PSScriptRoot)
     } else {

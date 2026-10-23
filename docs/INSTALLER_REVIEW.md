@@ -1,88 +1,95 @@
 # Installer candidate review — 2026-10-23
 
-This is a local **0.1.2 candidate**, based on `941ac7f`, on branch
-`installer/offline-setup-and-linux-guidance`. Nothing has been pushed, merged,
-tagged or published. There are no new production installer binaries ready to send
-friends. Fixture artifacts contain deliberately non-executable plugin payloads.
+The 0.1.2 candidate is under review in [draft PR #1](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/pull/1)
+on `installer/offline-setup-and-linux-guidance`, based on `941ac7f`. It has not been
+merged, tagged or released. Windows delivery is an extracted ZIP with **install.bat**
+and **uninstall.bat**; Linux delivery is a Flatpak `.run` plus an alternative tar.
+No new graphical Windows setup or setup compiler is required.
 
-## Findings
+## Findings and supported scope
 
-The historical 0.1.0 Inno source uses `PrivilegesRequired=lowest`, a global
-`SetupMutex`, and a `NextButtonClick` path that waits for `Setup.Relaunch.ps1`.
-That helper starts the same EXE with RunAs and waits for it. A mutex-owning parent
-waiting on the elevated copy is a plausible explanation for an interactive setup
-stall. This was verified in source, **not reproduced on native Windows**. The old
-silent CI path supplied `/ALLUSERS`, bypassing that interactive elevation path.
-The friend's exact error and OBS version remain unknown.
+The historical 0.1.0 setup used a global mutex and waited for a helper that launched
+an elevated copy of itself and waited. This is a plausible explanation for an
+interactive setup stall, verified in source but not reproduced on native Windows.
+The friend's exact error and OBS version remain unknown. Current batch launchers
+use a shared transaction engine: inspection releases its lock before elevation,
+and the parent holds no installer mutex while waiting for the elevated child.
 
-The 0.1.1 checkout ships CMD/PowerShell and shell/Python archives, with useful
-transaction tests but no conventional Windows setup. Its OBS discovery checks
-uninstall InstallLocation values and Program Files; the new shared discovery also
-checks the OBS application key's default value and both registry views.
+The existing engine already provides hash/architecture checks, running-OBS and
+concurrent-operation guards, staged replacement, rollback/recovery, version checks,
+and legacy EXE migration without running the obsolete uninstaller. These remain.
+Replay implementation under `src/` is unchanged.
 
-Linux is not one interchangeable binary target: the Flatpak package pins OBS
-32.2.2's exact deployment commit and FFmpeg 8 ABI. These guards remain intact.
-Fedora 44's native archive remains explicitly developer tooling. There is no
-new deb/RPM installer or claim of universal Linux compatibility.
+Windows supports normal and explicit portable OBS on Windows 10/11 x64, built with
+the OBS 32.1.1 SDK. The OBS 32.1 minimum is not a blanket future-ABI guarantee.
+The normal destination is ProgramData; portable mode uses the selected OBS tree.
+Settings, scenes, hotkeys, recordings and unrelated plugins remain untouched.
 
-## Changes
+Linux's friend-facing package is specifically x86_64 Flatpak OBS 32.2.2, exact
+commit `21b35765922fb5c8b92ccdccedc0d8ca709b12f86a961780350199082da822ef`, using its
+FFmpeg 8 ABI. The exact-commit and ABI guards are unchanged. Fedora 44's native
+archive remains developer tooling, not an interchangeable Flatpak or deb installer.
 
-- `packaging/windows/setup.iss`, `Setup.Backend.ps1`, and
-  `scripts/package-windows-setup.ps1`: an offline setup for normal OBS, one upfront
-  elevation, normal OBS folder selection, ProgramData plugin installation and
-  persistent Installed Apps removal. No self-relaunch helper or privilege override.
-  Portable markers direct users to the separate ZIP. The new AppId/support folder
-  is separate from obsolete 0.1.0 support, which the engine can retire safely.
-- `Installer.Core.ps1`: broader OBS discovery. Existing transaction, rollback,
-  process, integrity and path checks are retained. The portable script path remains.
-- `packaging/linux/bootstrap.py`, `scripts/package_linux.py`, and the Linux frontend:
-  one offline `.run`, embedded archive hash/path checks, preserved stdin for the
-  confirmation prompt, temporary extraction, and persistent user-state logs.
-  Both Linux formats use the same production payload and transaction engine.
-- CI: compile setup, exercise the normal graphical wizard without `/ALLUSERS` or
-  silent mode, test Installed Apps registration/repair/removal, and enable the
-  previously optional isolated Windows OBS startup/shutdown smoke. Production
-  Linux acceptance now exercises `.run` and tar launchers. These CI changes have
-  **not run on this revision**.
-- Release gates require setup EXE, portable ZIP, Linux run/tar, checksums and
-  notices. The `.run` must embed the exact validated tar. Draft-only publication
-  behavior and refusal to modify published releases remain.
-- Replay implementation under `src/` is unchanged. CMake version becomes 0.1.2;
-  profile/scene/hotkey/recording sentinels extend preservation coverage.
+## Final changes
 
-## Checks in this Linux environment
+- Rename the Windows launchers to `install.bat` / `uninstall.bat`, using built-in
+  PowerShell and process-local execution policy. Normal OBS is the default choice;
+  elevation is requested only when needed, with visible errors and persistent logs.
+- Detect custom normal OBS paths using the application key's default value,
+  uninstall InstallLocation values, both registry views and Program Files.
+  Normal mode refuses portable markers with instructions to choose Portable.
+- Keep safe update/repair/removal and old-EXE cleanup. No new Installed Apps entry;
+  use `uninstall.bat`, including after OBS or the payload has been removed.
+- Add one offline Linux `.run`, with an embedded archive hash, safe extraction,
+  working confirmation input, temporary files and persistent user-state logs.
+  It uses exactly the same payload and transaction engine as the tar archive.
+- Extend preservation fixtures for scenes, hotkeys and recordings. Windows native
+  acceptance exercises the batch default-normal confirmation/discovery path,
+  portable relocation, payload damage, concurrency, repair/removal and dependencies.
+- Enable actual Windows OBS startup/shutdown checks and preserve special-character
+  test paths using ProcessStartInfo rather than PowerShell wildcard resolution.
+  Linux production acceptance now exercises `.run` and tar launchers.
+- Draft-release gates require the Windows ZIP, Linux run/tar, checksums, notices
+  and Linux compatibility metadata. The `.run` must embed the exact validated tar.
+  Published releases remain protected and branch CI cannot publish a release.
 
-| Check | Result and scope |
-| --- | --- |
-| History and naming | Both compiled directly with GCC 14 and passed. Replay core only; not a plugin/OBS build. |
-| `tests/flatpak_installer_tests.py` | 14 passed; temporary payloads and mocked host interaction. |
-| `tests/linux_package_tests.py` | 14 passed; extracted tar and real shell/bootstrap execution with synthetic ELF payloads and a fake Flatpak CLI. Includes update/repair, confirmation/cancel, corruption, unsafe paths, mismatch, sudo refusal, persistent logs, removal and preservation. |
-| `tests/release_assets_tests.py` | 10 passed; synthetic assets and mocked GitHub publication. No GitHub writes. |
-| `tests/windows_installer_tests.ps1` | Passed using PowerShell 7.4.13 on Linux. Parsing, startup contract, fixture ZIP/manifests, rollback/recovery, install/repair/removal, path quoting, legacy support cleanup and preservation. Not native PowerShell 5.1, registry/UAC or OBS execution. |
-| Python compile, shell syntax, `git diff --check` | Passed. |
-| Full Fedora/Flatpak production build and OBS smoke | Blocked before dependency resolution. Proxy returns HTTP 403 to HTTPS CONNECT for `mirrors.fedoraproject.org`, `dl.fedoraproject.org` and `dl.flathub.org`. This is network access rejection, not an approval-review denial or a compiler failure. |
-| Windows setup compilation | Not completed. The Inno 6.7.3 tool was downloaded, but this host cannot execute the 32-bit Wine loader (`Exec format error`). A 64-bit Inno 7 fallback refused the Wine environment. No new EXE was produced. |
-| FFmpeg dependency test | An attempted run failed before configuration because CMake was initially absent. CMake was subsequently installed in temporary tools, but matching OBS/FFmpeg 8 dependencies are unavailable; no successful dependency-guard rerun is claimed. Guards were not changed. |
-| Native Windows build, normal wizard, actual registry/removal and OBS startup | Not run here; implemented as required Windows CI checks. |
-| UAC approval/denial, protected portable folder, real replay saves/hotkeys | Not run; require native interactive/manual acceptance. |
+## Evidence and remaining checks
 
-Local logs and synthetic packages are under `build-installer-review/`, ignored by
-Git. Read its `README.txt`: **fixture packages must never be distributed as plugins**.
-No downloaded tools or dependency binaries are committed.
+Local GCC history/naming tests pass. Linux fixture suites pass (14 transaction,
+14 package, 9 release-gate tests). Windows filesystem/manifests/rollback fixtures
+pass under PowerShell 7.4.13 on Linux; that is not native Windows acceptance.
+Python compilation, shell syntax and whitespace checks pass. Fixture binaries are
+non-executable sentinels and must never be distributed as plugins.
 
-## Proposed next steps — require separate authorization
+[CI run 40039408059](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/40039408059)
+on `22d7391` passed Fedora native compilation/core tests and Flatpak production
+builds, real compatibility checks, install/repair/removal for both Linux formats,
+and isolated OBS load/shutdown. Baseline and plugin runs both retained one OBS
+allocation, with normal configuration hashes unchanged. Windows MSVC and setup
+compilation passed on that earlier revision; acceptance exposed wildcard handling
+in the previously unexecuted smoke launcher. The literal-path fix is retained.
+[Run 40039877702](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/runs/40039877702)
+on `a278557` reached and completed the standard script install/repair/removal cases
+after the DLL/writer and isolated OBS startup/shutdown assertions. Its later failure
+was a timeout in an EXE-only test. The EXE builder and all wizard-only obligations
+are removed from the final batch-only scope; actual OBS loading checks remain.
 
-1. Push only this branch and open a draft PR against main. Do not tag or merge.
-   The push/PR runs `.github/workflows/build.yml` on the branch. Inspect Windows
-   setup compilation, ordinary wizard/repair/removal and `-SmokeObs`, plus Fedora
-   and exact-commit Flatpak production jobs. Resolve any native failures before
-   calling this revision tested on those platforms.
-2. Download CI's production artifacts and test on a clean Windows 10/11 desktop
-   with standard-user UAC approval/denial, a custom OBS location, and portable OBS;
-   exercise real replay saves, saved scenes/settings/hotkeys and removal. On Linux,
-   run both install/update/removal and real OBS with the exact compatible Flatpak.
-   Ask friends for their original error/log and installation type when available.
-3. After review and explicit permission, merge and tag `v0.1.2` at the accepted
-   commit. Tag CI must pass all jobs and prepares only an unpublished draft
-   prerelease. Inspect its four production assets, checksums, notices and
-   compatibility metadata. Publishing that draft requires a separate decision.
+Native Windows batch-package acceptance and the OBS smoke must pass on the final
+revision before distribution. Hosted builders are already administrators, so UAC
+approval/denial and protected portable folders remain manual checks. Real hardware
+replay saves, audio/video quality and desktop hotkeys also remain manual acceptance.
+A startup/load smoke does not establish successful real replay capture.
+
+The cloud host's proxy rejects dependency/download domains with HTTP 403 CONNECT;
+CI establishes production results independently. Those network failures were not
+approval-review denials. Local test logs and synthetic packages are under ignored
+`build-installer-review/`; downloaded fixture artifacts are never release inputs.
+
+## Publication plan
+
+Keep this PR a draft until the final native Windows and Linux checks pass. Download
+only production CI artifacts for clean-desktop BAT/UAC and real replay acceptance.
+Review the exact OBS compatibility metadata and dependency notices. After explicit
+approval, merge and tag `v0.1.2` at the accepted commit. Tag CI prepares only an
+unpublished draft prerelease; inspect all three assets and checksums before making
+a separate decision to publish. No merge, tag or release is authorized here.

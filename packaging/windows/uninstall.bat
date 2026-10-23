@@ -1,7 +1,7 @@
 @echo off
-setlocal
+setlocal DisableDelayedExpansion
 if not exist "%~dp0PluginFiles\Install.ps1" (
-    echo ERROR: Extract the entire ZIP before running Uninstall.cmd.
+    echo ERROR: Extract the entire ZIP before running uninstall.bat.
     pause
     exit /b 1
 )

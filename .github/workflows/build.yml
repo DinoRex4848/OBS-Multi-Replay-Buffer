@@ -44,25 +44,10 @@ jobs:
       - name: Test portable installer with Windows PowerShell
         shell: powershell
         run: ./tests/windows_installer_tests.ps1
-      - name: Install pinned setup compiler
-        # Inno is a build dependency; the resulting setup runs offline.
-        shell: pwsh
-        run: |
-          $Setup = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
-          $Compiler = Join-Path $env:RUNNER_TEMP "Inno Setup 6"
-          Invoke-WebRequest "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" -OutFile $Setup
-          if ((Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash -ne "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732") {
-            throw "Inno Setup download checksum mismatch"
-          }
-          $Process = Start-Process -FilePath $Setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $Compiler + '"')) -Wait -PassThru
-          if ($Process.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $Compiler "ISCC.exe"))) {
-            throw "Inno Setup compiler installation failed: $($Process.ExitCode)"
-          }
-          Add-Content -LiteralPath $env:GITHUB_PATH -Value $Compiler -Encoding utf8
-      - name: Build Windows SDK, plugin, helper and offline setup
+      - name: Build Windows SDK, plugin and helper
         shell: pwsh
         run: ./scripts/build-windows.ps1
-      - name: Test portable package, ordinary setup wizard and isolated OBS startup
+      - name: Test extracted batch installers and isolated OBS startup
         shell: powershell
         run: ./tests/windows_package_tests.ps1 -SmokeObs
       - uses: actions/upload-artifact@v4
@@ -76,7 +61,6 @@ jobs:
           if-no-files-found: error
           path: |
             dist/*.zip
-            dist/*-windows-x64-setup.exe
             dist/*.sha256
             dist/windows-installer-notices.txt
   linux-installer:

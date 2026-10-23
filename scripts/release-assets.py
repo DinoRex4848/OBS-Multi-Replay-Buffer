@@ -25,7 +25,7 @@ def check_tag(reference):
 
 def validate_archive(path):
     windows = path.suffix == ".zip"
-    scripts = ("Install.cmd", "Uninstall.cmd") if windows else ("install.sh", "uninstall.sh")
+    scripts = ("install.bat", "uninstall.bat") if windows else ("install.sh", "uninstall.sh")
     expected = {*scripts, "README.txt", "PluginFiles"}
     content = {}
     names = set()
@@ -66,7 +66,7 @@ def validate_archive(path):
     for name in scripts:
         if windows:
             if b"\r\n" not in content[name] or b"\n" in content[name].replace(b"\r\n", b""):
-                raise RuntimeError("CMD scripts must use CRLF")
+                raise RuntimeError("Windows batch scripts must use CRLF")
         elif b"\r" in content[name]:
             raise RuntimeError("Shell scripts must use LF")
     prefix = "PluginFiles/payload/obs-multi-replay/"
@@ -86,7 +86,6 @@ def validate_archive(path):
 
 def prepare(directory):
     required = [f"obs-multi-replay-{version()}-windows-x64.zip",
-                f"obs-multi-replay-{version()}-windows-x64-setup.exe",
                 f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz",
                 f"obs-multi-replay-{version()}-linux-flatpak-x86_64.run"]
     lines = []
@@ -97,10 +96,7 @@ def prepare(directory):
         checksum = path.with_name(name + ".sha256")
         if checksum.read_text(encoding="utf-8-sig").strip().lower() != f"{digest}  {name}".lower():
             raise RuntimeError(f"Checksum mismatch: {name}")
-        if name.endswith(".exe"):
-            if path.read_bytes()[:2] != b"MZ":
-                raise RuntimeError("Windows setup is not a Windows executable")
-        elif name.endswith(".run"):
+        if name.endswith(".run"):
             header, marker, payload = path.read_bytes().partition(b"\n__REPLAY_ARCHIVE_BELOW__\n")
             archive = directory / f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz"
             if (not marker or not header.startswith(b"#!/bin/sh\n") or payload != archive.read_bytes()
@@ -126,8 +122,8 @@ def prepare(directory):
                     "Download the installer for your OBS installation type. Rerun it to update or repair; "
                     "settings, hotkeys and recordings are preserved. Close OBS before installation or removal.\n\n"
                     "Windows: x64 OBS 32.1 or newer; standard and portable installations. "
-                    "For normal OBS, run the offline -setup.exe (one upfront UAC prompt); remove through Installed Apps. "
-                    "For portable OBS, extract the entire ZIP and run Install.cmd / Uninstall.cmd with Portable selected. "
+                    "Extract the entire ZIP, then double-click install.bat; choose Normal (default) or Portable OBS. "
+                    "Run uninstall.bat for removal. Administrator access is requested only when needed. "
                     "Built-in Windows PowerShell is used.\n\n"
                     f"Linux: Flatpak OBS {metadata['obs_version']} x86_64, commit `{metadata['app_commit']}`. "
                     f"Python 3.10+ and Flatpak are required. Run `sh ./obs-multi-replay-{version()}-linux-flatpak-x86_64.run`, "

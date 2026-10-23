@@ -2,60 +2,57 @@
 
 Close OBS normally before installing, repairing or removing the plugin. Installers
 replace only this plugin's binaries and data. Profiles, scenes, replay preferences,
-hotkeys, recordings and other plugins are preserved. No installer changes OBS itself.
-This revision is experimental; see [local validation](INSTALLER_REVIEW.md) before sharing.
+hotkeys, recordings and other plugins are preserved. This revision is experimental;
+see [validation](INSTALLER_REVIEW.md) before sharing.
 
-## Windows 10/11 x64: normally installed OBS
+## Windows 10/11 x64
 
-Download **`obs-multi-replay-0.1.2-windows-x64-setup.exe`**. Double-click it and approve
-the administrator prompt at startup. Check the detected OBS folder and click Install.
-No ZIP extraction, Python, SDK, compiler or additional PowerShell installation is
-needed. The package includes the writer's dependencies and works offline.
+Download **`obs-multi-replay-0.1.2-windows-x64.zip`** and extract the **entire ZIP**
+into a writable folder. It contains only `install.bat`, `uninstall.bat`, `README.txt`
+and `PluginFiles/`. Double-click **install.bat** and:
 
-Setup checks OBS's application and uninstall registry keys, then Program Files.
-If necessary, browse to the OBS root containing `bin\64bit\obs64.exe`. The plugin
-requires OBS 32.1 or newer; Windows builds target OBS 32.1.1. The minimum is not a
-promise of compatibility with every future release. Portable marker files cause
-setup to direct you to the separate ZIP instead.
+1. Accept **Normal** (the default) for normally installed OBS, or choose **Portable**.
+2. Check the detected OBS folder and install/update/repair action. If OBS is not
+   detected, enter its root folder containing `bin\64bit\obs64.exe`.
+3. Confirm and approve administrator access if requested.
+4. Restart OBS. Open **Docks → Multi-Length Replay** and **Tools → Multi-Buffer Settings**.
 
-The plugin goes into `C:\ProgramData\obs-studio\plugins\obs-multi-replay`.
-Installer support and the uninstaller go into `C:\Program Files\OBS Multi Replay Buffer`.
-Run setup again to update or repair. Remove **OBS Multi-Length Replay** through
-Windows **Installed Apps**; the original download and OBS executable are not needed
-for removal. Setup logs are `Setup Log*.txt` in `%TEMP%`, or the path given by `/LOG`.
+Run `install.bat` again to update or repair. Run **uninstall.bat**, selecting the same
+mode/folder, to remove only the plugin. Keep this package for removal, or use a newer
+package. There is no new Installed Apps entry. Interactive errors and the log path
+remain visible until you press Enter. Logs are under `PluginFiles/Logs`.
 
-For a pre-elevated automation shell:
+Built-in Windows PowerShell 5.1 is used. No Python, compiler, SDK or additional
+PowerShell installation is needed. The ZIP includes the writer's dependencies and
+works offline. Its writer EXE and DLLs are required plugin files, not a setup program.
+OBS 32.1 or newer x64 is required; the tested Windows build target is OBS 32.1.1.
+The minimum is not a promise of compatibility with every future OBS release.
 
-```bat
-obs-multi-replay-0.1.2-windows-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /OBSROOT="D:\OBS Studio" /LOG="D:\setup.log"
-```
+Normal OBS detection checks the OBS application key's default value, uninstall
+InstallLocation values and Program Files, including both registry views. Normal
+installation targets `C:\ProgramData\obs-studio\plugins\obs-multi-replay` and requests
+administrator access when needed. A selected folder with a portable marker is
+refused in Normal mode with instructions to choose Portable.
 
-There is no `/ALLUSERS` or secondary elevation flow. Interactive UAC approval and
-denial still require native manual acceptance before publication. Signing is not
-configured; Windows may identify an unsigned build as an unknown publisher.
+Portable installation targets `obs-plugins\64bit\obs-multi-replay.dll` and
+`data\obs-plugins\obs-multi-replay` inside the selected OBS root. Writable portable
+folders do not need elevation; protected ones request administrator access. If
+portable OBS moved, select its current folder for removal.
 
-## Windows x64: portable OBS
-
-Extract the **entire Windows ZIP** into a writable folder. It contains `Install.cmd`,
-`Uninstall.cmd`, `README.txt` and `PluginFiles/`. Double-click **Install.cmd**, choose
-**Portable**, select the OBS root, check the action/destination, and confirm.
-Run it again for update/repair. Run **Uninstall.cmd**, choosing Portable and the same
-folder, to remove the plugin. If OBS moved, select its current folder.
-
-The portable paths are `obs-plugins\64bit\obs-multi-replay.dll` and
-`data\obs-plugins\obs-multi-replay`. Portable installation does not register an
-Installed Apps entry. Protected folders request administrator access; ordinary
-writable portable folders do not. Logs are in `PluginFiles/Logs`.
+From Command Prompt, for automation:
 
 ```bat
-Install.cmd -Mode Portable -ObsRoot "D:\Portable OBS" -NonInteractive
-Uninstall.cmd -Mode Portable -ObsRoot "D:\Moved OBS" -NonInteractive
+install.bat -Mode Standard -NonInteractive
+install.bat -Mode Portable -ObsRoot "D:\Portable OBS" -NonInteractive
+uninstall.bat -Mode Portable -ObsRoot "D:\Moved OBS" -NonInteractive
 ```
 
-Noninteractive scripts fail if elevation is needed. The scripts retain Standard
-mode for existing automation, but normal desktop installs should use the EXE and
-Installed Apps together. Keep the ZIP or use a newer ZIP for portable removal.
-Execution-policy overrides apply only to the launched PowerShell process.
+Noninteractive mode skips confirmation/closing pauses and fails if elevation is
+needed; use an elevated shell for normal/protected targets. Execution-policy
+overrides apply only to the launched PowerShell process. Removal works without a
+valid payload or an OBS executable. Old script/EXE installations are supported;
+recognized obsolete EXE support/registration is retired without executing the old
+uninstaller. Unfamiliar files are retained and reported.
 
 ## Linux x86_64: Flatpak OBS
 
@@ -108,16 +105,14 @@ Both engines verify payload hashes/architecture, refuse running OBS and concurre
 operations, block known downgrades, and stage changes with rollback/recovery
 journals. After interruption, rerun the installer for the same target. Retain
 recovery files if permissions prevent recovery and include the error/log in a report.
-Recognized obsolete 0.1.0 Windows setup files/registration are retired without
-executing their old uninstaller; unfamiliar files are retained and reported.
 
-Build Windows with `scripts/build-windows.ps1` (Visual Studio/OBS prerequisites and
-Inno Setup 6). Repackage staging files using `scripts/package-windows.ps1`, then
-`scripts/package-windows-setup.ps1`. Build Linux using `scripts/build-flatpak.sh`
+Build Windows with `scripts/build-windows.ps1` using the Visual Studio/OBS
+prerequisites. `scripts/package-windows.ps1` repackages compiled staging files.
+No graphical setup compiler is needed. Build Linux using `scripts/build-flatpak.sh`
 against the matching app/SDK; `scripts/package_linux.py` creates both Linux formats.
 
-CI checks the ordinary Windows wizard, extracted portable scripts, dependency
-loading, isolated OBS startup/shutdown, Linux transactions and production loading.
-Those checks must pass on this revision before sharing binaries. A future matching
-version tag prepares an **unpublished draft prerelease**, with all four assets,
-checksums, notices and Linux compatibility metadata. No publication is automatic.
+CI checks the extracted Windows BAT launchers, dependency loading, isolated OBS
+startup/shutdown, Linux transactions and production loading. Those checks must pass
+on this revision before sharing binaries. A future matching version tag prepares
+an **unpublished draft prerelease**, with the Windows ZIP, Linux run/tar, checksums,
+notices and Linux compatibility metadata. No publication is automatic.
