@@ -1,4 +1,5 @@
 #include "capture.hpp"
+#include "timebase.hpp"
 #include "wire.hpp"
 #include <util/platform.h>
 #include <algorithm>
@@ -9,7 +10,6 @@
 #include <sstream>
 #include <stdexcept>
 extern "C" {
-#include <libavutil/mathematics.h>
 #include <libavutil/pixfmt.h>
 }
 
@@ -321,10 +321,8 @@ void Capture::receive(encoder_packet *packet)
       failCapture("Encoded stream configuration changed");
       return;
     }
-    AVRational base{packet->timebase_num, packet->timebase_den};
     auto &s = format_->streams[track];
-    const Time duration = track ? av_rescale_q(s.frameSize, {1, s.sampleRate}, {1, 1000000})
-                                : av_rescale_q(1, {s.fpsDen, s.fpsNum}, {1, 1000000});
+    const Time duration = track ? toMicroseconds(s.frameSize, 1, s.sampleRate) : toMicroseconds(1, s.fpsDen, s.fpsNum);
     const Time raw = packet->sys_dts_usec;
     const bool firstPacket = rawMark_[track] == 0;
     if (!firstPacket) {
@@ -349,7 +347,7 @@ void Capture::receive(encoder_packet *packet)
     lastPacket_ = clockNow();
     if (!track && paused_ && resumeNoted_ && raw >= resumeWall_) paused_ = resumeNoted_ = false;
     const Time dts = raw - shift_[track];
-    const Time pts = dts + av_rescale_q(packet->pts - packet->dts, base, {1, 1000000});
+    const Time pts = dts + toMicroseconds(packet->pts - packet->dts, packet->timebase_num, packet->timebase_den);
     watermark_[track] = dts;
     bool needed = collecting_;
     for (auto &job : pending_) needed |= dts <= job.clip.requestedEnd + (track ? 0 : settleWindow);
