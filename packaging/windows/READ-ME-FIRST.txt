@@ -5,6 +5,11 @@ OBS Multi-Length Replay - Windows x64
    For portable OBS, choose Portable and its root folder.
 3. Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings.
 
+If Windows shows "Windows protected your PC" (SmartScreen) for install.bat or
+uninstall.bat, click "More info", then "Run anyway". This appears because the
+scripts are unsigned and were downloaded. If "Open File - Security Warning"
+appears instead, click Run. Then approve the administrator (UAC) prompt.
+
 Run install.bat again to update or repair. Run uninstall.bat to remove only
 this plugin. Keep the package for removal, or use a newer package's uninstaller.
 Normal installs request administrator permission and use ProgramData. Portable
