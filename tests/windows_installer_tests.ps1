@@ -57,6 +57,11 @@ try {
     $Kit = Join-Path $ArchiveRoot "PluginFiles"
     $Payload = Join-Path $Kit "payload/obs-multi-replay"
     Assert-ReplayPackage $Kit | Out-Null
+    # A module importing FFmpeg fails to load in OBS releases with another FFmpeg major.
+    $FFmpegStage = Join-Path $Temp "ffmpeg-module-stage"
+    Copy-Item -LiteralPath $Stage -Destination $FFmpegStage -Recurse
+    Write-FixtureBinary (Join-Path $FFmpegStage "obs-plugins/64bit/obs-multi-replay.dll") $true "FIXTURE imports avutil-59.dll"
+    Expect-Failure { & (Join-Path $Repo "scripts/package-windows.ps1") -PackagePath $FFmpegStage -OutputDirectory (Join-Path $Temp "ffmpeg-out") } "must not link FFmpeg"
     # Detection must skip stale paths and accept a custom registered OBS folder.
     $DetectedRoot = Join-Path $Temp "Custom OBS"
     [IO.Directory]::CreateDirectory((Join-Path $DetectedRoot "bin/64bit")) | Out-Null

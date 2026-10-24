@@ -24,6 +24,10 @@ if (!(Test-Path -LiteralPath $Dll -PathType Leaf) -or !(Test-Path -LiteralPath $
 }
 Assert-ReplayWindowsBinary $Dll Dll
 Assert-ReplayWindowsBinary $Writer Exe
+# OBS releases ship different FFmpeg majors, so only the separate writer may link FFmpeg.
+if ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($Dll)) -match '(?i)(av(codec|format|util|device|filter)|sw(scale|resample))-\d+\.dll') {
+    throw "The OBS module must not link FFmpeg ($($Matches[0])); it would fail to load in other OBS versions."
+}
 [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
 $Kit = Join-Path $OutputDirectory "windows-installer"
 if (Test-Path -LiteralPath $Kit) { Remove-Item -LiteralPath $Kit -Recurse -Force }
