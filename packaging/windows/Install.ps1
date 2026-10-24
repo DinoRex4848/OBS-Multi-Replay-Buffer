@@ -79,9 +79,15 @@ try {
         $Command = '$a = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + $Data + '")) | ConvertFrom-Json; ' +
                    '& $a.Script -Action $a.Action -Mode $a.Mode -ObsRoot $a.ObsRoot -LogPath $a.LogPath -FromUac; exit $LASTEXITCODE'
         $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+        $LogStart = (Get-Item -LiteralPath $LogPath).Length
         $Process = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -Verb RunAs -Wait -PassThru `
                                 -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $Encoded"
         $ExitCode = $Process.ExitCode
+        # The elevated window closes when it finishes, so show its result here.
+        $Bytes = [IO.File]::ReadAllBytes($LogPath)
+        $ChildOutput = [Text.Encoding]::UTF8.GetString($Bytes, $LogStart, $Bytes.Length - $LogStart).TrimEnd()
+        if ($ChildOutput) { Write-Host "Administrator step:"; Write-Host $ChildOutput }
+        else { Write-Host "The elevated installer exited with code $ExitCode without writing to the log." }
         if ($ExitCode -ne 0) { Write-ReplayMessage "The elevated installer failed. See the error details in $LogPath" }
     } else {
         Invoke-ReplaySetup $Action $Mode $ObsRoot $PSScriptRoot 3>&1 | ForEach-Object { Write-ReplayMessage $_.ToString() }
