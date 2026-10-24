@@ -18,7 +18,7 @@ and the parent holds no installer mutex while waiting for the elevated child.
 The existing engine already provides hash/architecture checks, running-OBS and
 concurrent-operation guards, staged replacement, rollback/recovery, version checks,
 and legacy EXE migration without running the obsolete uninstaller. These remain.
-Replay implementation under `src/` is unchanged.
+The only `src/` change replaces the module's single FFmpeg call (see below).
 
 Windows supports normal and explicit portable OBS on Windows 10/11 x64, built with
 the OBS 32.1.1 SDK. The OBS 32.1 minimum is not a blanket future-ABI guarantee.
@@ -73,6 +73,15 @@ on `a278557` reached and completed the standard script install/repair/removal ca
 after the DLL/writer and isolated OBS startup/shutdown assertions. Its later failure
 was a timeout in an EXE-only test. The EXE builder and all wizard-only obligations
 are removed from the final batch-only scope; actual OBS loading checks remain.
+
+A non-admin native run on Windows 11 found two blockers. Microsoft Defender
+flagged the elevated `-EncodedCommand` relaunch as `!#SLF:CMD_HSTR:General.ML.B` and
+blocked it ("Access is denied" before UAC); the relaunch now uses `-File` with quoted
+arguments, and UAC install/repair/uninstall then passed from Desktop and Downloads.
+Steam OBS 32.2.2 could not load the module because it imported FFmpeg 7's
+`avutil-59.dll` while OBS 32.2 ships FFmpeg 8; the module no longer imports FFmpeg,
+and packaging fails if it ever does. Loading it in OBS 32.2.2 still needs confirmation. The elevated result is shown in the original
+window, and OneDrive cloud reparse points are accepted while links stay refused.
 
 Native Windows batch-package acceptance and the OBS smoke must pass on the final
 revision before distribution. Hosted builders are already administrators, so UAC
