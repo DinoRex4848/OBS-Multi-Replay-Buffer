@@ -117,6 +117,27 @@ try {
     [IO.File]::WriteAllText((Join-Path $Payload "data/.hidden-extra.txt"), "extra")
     Expect-Failure { Assert-ReplayPackage $Kit } "Unlisted package file"
     Remove-Item -LiteralPath (Join-Path $Payload "data/.hidden-extra.txt") -Force
+    # OneDrive cloud reparse points are allowed; symlinks and junctions stay refused.
+    $LinkTarget = Join-Path $Temp "link target"
+    [IO.Directory]::CreateDirectory($LinkTarget) | Out-Null
+    foreach ($Link in @((Join-Path $Temp "linked folder"), (Join-Path $Payload "data/linked"))) {
+        if ($env:OS -eq "Windows_NT") { New-Item -ItemType Junction -Path $Link -Value $LinkTarget | Out-Null }
+        else { New-Item -ItemType SymbolicLink -Path $Link -Value $LinkTarget | Out-Null }
+    }
+    Expect-Failure { Assert-ReplaySafePath (Join-Path $Temp "linked folder/plugins") } "Refusing a linked installation path"
+    Expect-Failure { Assert-ReplayPackage $Kit } "Links are not allowed"
+    if ($env:OS -eq "Windows_NT") {
+        Check ((Get-ReplayReparseTag (Join-Path $Temp "linked folder")) -eq [Convert]::ToUInt32("A0000003", 16)) "Junction tag not read"
+        foreach ($Tag in @("9000001A", "9000101A", "9000F01A")) {
+            Check ([ReplayReparseTag]::IsCloud([Convert]::ToUInt32($Tag, 16))) "OneDrive tag $Tag refused"
+        }
+        foreach ($Tag in @("A000000C", "A0000003", "8000001B", "0")) {
+            Check (![ReplayReparseTag]::IsCloud([Convert]::ToUInt32($Tag, 16))) "Tag $Tag allowed as a cloud file"
+        }
+    }
+    # Directory.Delete removes the link itself, never its target's contents.
+    foreach ($Link in @((Join-Path $Temp "linked folder"), (Join-Path $Payload "data/linked"))) { [IO.Directory]::Delete($Link) }
+    Assert-ReplayPackage $Kit | Out-Null
     $BadBinary = Join-Path $Temp "x86.dll"
     Write-FixtureBinary $BadBinary $true "x86 fixture" 0x14C
     Expect-Failure { Assert-ReplayWindowsBinary $BadBinary Dll } "Windows x64"
@@ -186,7 +207,7 @@ try {
     Set-ReplayInstallTargets @(@{ Path = (Join-Path $MissingObs "obs-plugins/64bit/obs-multi-replay.dll"); Source = $null })
     Check (!(Test-Path -LiteralPath $MissingObs)) "Uninstall recreated a removed OBS folder"
     Check (@(Get-ChildItem -LiteralPath $Temp -Recurse -Force | Where-Object { $_.Name -match '^\.obs-multi-replay-(stage|backup)-' }).Count -eq 0) "Temporary install files remain"
-    Write-Host "PASS: script parsing, fixture ZIP/manifests, install/update/uninstall, portable layout, rollback, path quoting, corruption/x86 rejection, running OBS guard and profile preservation"
+    Write-Host "PASS: script parsing, fixture ZIP/manifests, install/update/uninstall, portable layout, rollback, path quoting, link/OneDrive tags, corruption/x86 rejection, running OBS guard and profile preservation"
 } finally {
     Remove-Item Function:\Move-Item -ErrorAction SilentlyContinue
     Remove-Item Function:\Get-Process -ErrorAction SilentlyContinue
