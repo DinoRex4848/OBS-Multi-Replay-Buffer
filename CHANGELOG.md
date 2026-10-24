@@ -1,11 +1,14 @@
 # Changelog
 
-## 0.1.2 — local installer candidate
+## 0.1.2
 
 - Provide simple install.bat/uninstall.bat launchers with normal/portable OBS detection, elevation only as needed, and preserved transaction safeguards.
+- Fix loading in OBS 32.2: the Windows module no longer imports FFmpeg (it needed OBS 32.1's `avutil-59.dll`), and packaging rejects any module that does.
+- Relaunch for administrator access with `-File` instead of `-EncodedCommand`, which Microsoft Defender blocked as a trojan before UAC appeared.
+- Show the elevated step's result in the original window, accept OneDrive folders while still refusing links, and explain the SmartScreen prompt in the README.
 - Add a single-file offline Linux Flatpak installer with persistent logs and archive integrity checks, retaining exact OBS commit/ABI restrictions.
 - Exercise the extracted Windows BAT package and isolated OBS startup in CI; retain transaction, rollback and settings-preservation checks.
-- Require the Windows ZIP and both Linux formats in draft-release validation. This candidate is under review in draft PR #1; it has not been merged, tagged or released.
+- Require the Windows ZIP and both Linux formats in draft-release validation.
 
 ## 0.1.1 (draft testing build)
 

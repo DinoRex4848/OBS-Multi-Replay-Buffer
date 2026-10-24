@@ -80,7 +80,8 @@ blocked it ("Access is denied" before UAC); the relaunch now uses `-File` with q
 arguments, and UAC install/repair/uninstall then passed from Desktop and Downloads.
 Steam OBS 32.2.2 could not load the module because it imported FFmpeg 7's
 `avutil-59.dll` while OBS 32.2 ships FFmpeg 8; the module no longer imports FFmpeg,
-and packaging fails if it ever does. Loading it in OBS 32.2.2 still needs confirmation. The elevated result is shown in the original
+and packaging fails if it ever does. A rebuilt local package then installed, loaded
+and started a replay session in Steam OBS 32.2.2. The elevated result is shown in the original
 window, and OneDrive cloud reparse points are accepted while links stay refused.
 
 Native Windows batch-package acceptance and the OBS smoke must pass on the final
