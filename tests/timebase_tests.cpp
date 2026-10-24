@@ -24,7 +24,8 @@ int main()
     CHECK(toMicroseconds(3, 1, 2000000) == 2);
     CHECK(toMicroseconds(-1, 1, 2000000) == -1);
     CHECK(toMicroseconds(0, 1, 60) == 0);
-    for (auto [num, den] : {std::pair<int64_t, int64_t>{1, 0}, {1, -60}, {-1, 60}}) {
+    const std::pair<int64_t, int64_t> invalid[] = {{1, 0}, {1, -60}, {-1, 60}};
+    for (auto [num, den] : invalid) {
       bool rejected = false;
       try {
         toMicroseconds(1, num, den);
