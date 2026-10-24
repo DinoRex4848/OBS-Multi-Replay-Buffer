@@ -140,11 +140,22 @@ public static class ReplayDllProbe {
         $ObsInfo.UseShellExecute = $false
         $Process = [Diagnostics.Process]::Start($ObsInfo)
         try {
-            Start-Sleep -Seconds 10
-            $RuntimeLogs = @(Get-ChildItem -LiteralPath (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt | Sort-Object LastWriteTime)
+            # Software-rendered runners can take well over 10 s to load every module.
+            $Ready = '\[multi-replay\] Replay dock and Tools settings ready; manual startup'
+            $RuntimeLogs = @()
+            $Log = ""
+            $Deadline = (Get-Date).AddSeconds(90)
+            while ((Get-Date) -lt $Deadline -and $Log -notmatch $Ready -and !$Process.HasExited) {
+                Start-Sleep -Seconds 2
+                $RuntimeLogs = @(Get-ChildItem -LiteralPath (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt -ErrorAction SilentlyContinue | Sort-Object LastWriteTime)
+                if ($RuntimeLogs.Count) { $Log = [string](Get-Content -LiteralPath $RuntimeLogs[-1].FullName -Raw) }
+            }
             Check ($RuntimeLogs.Count -gt 0) "OBS did not write a startup log"
-            $Log = Get-Content -LiteralPath $RuntimeLogs[-1].FullName -Raw
-            Check ($Log -match '\[multi-replay\] Replay dock and Tools settings ready; manual startup') "Plugin did not finish initializing in OBS"
+            # Keep the log for the diagnostics artifact even if a check below fails.
+            [IO.Directory]::CreateDirectory($Logs) | Out-Null
+            Copy-Item -LiteralPath $RuntimeLogs[-1].FullName -Destination (Join-Path $Logs "obs-startup.log")
+            $PluginLines = ($Log -split "`n" | Where-Object { $_ -match 'multi-replay|LoadLibrary|not loaded' }) -join "`n"
+            Check ($Log -match $Ready) "Plugin did not finish initializing in OBS. Related log lines:`n$PluginLines"
             Check ($Log -notmatch '\[multi-replay\] Session') "Replay unexpectedly started during OBS startup"
             Check ($Process.CloseMainWindow()) "Could not close isolated OBS normally"
             Check ($Process.WaitForExit(15000)) "OBS did not close normally"
