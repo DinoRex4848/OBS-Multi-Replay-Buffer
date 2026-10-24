@@ -57,25 +57,51 @@ try {
     $Kit = Join-Path $ArchiveRoot "PluginFiles"
     $Payload = Join-Path $Kit "payload/obs-multi-replay"
     Assert-ReplayPackage $Kit | Out-Null
+    # A module importing FFmpeg fails to load in OBS releases with another FFmpeg major.
+    $FFmpegStage = Join-Path $Temp "ffmpeg-module-stage"
+    Copy-Item -LiteralPath $Stage -Destination $FFmpegStage -Recurse
+    Write-FixtureBinary (Join-Path $FFmpegStage "obs-plugins/64bit/obs-multi-replay.dll") $true "FIXTURE imports avutil-59.dll"
+    Expect-Failure { & (Join-Path $Repo "scripts/package-windows.ps1") -PackagePath $FFmpegStage -OutputDirectory (Join-Path $Temp "ffmpeg-out") } "must not link FFmpeg"
+    # Detection must skip stale paths and accept a custom registered OBS folder.
+    $DetectedRoot = Join-Path $Temp "Custom OBS"
+    [IO.Directory]::CreateDirectory((Join-Path $DetectedRoot "bin/64bit")) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $DetectedRoot "bin/64bit/obs64.exe"), "detection fixture only")
+    $global:ReplayDetectionRoot = $DetectedRoot
+    function Get-ReplayObsCandidates { @("/missing-obsolete-obs", $global:ReplayDetectionRoot) }
+    Check ((Find-ReplayObs) -eq $DetectedRoot) "Custom OBS detection failed"
+    Remove-Item Function:\Get-ReplayObsCandidates
+    # The elevated relaunch passes paths to powershell.exe -File as quoted arguments.
+    Check ((ConvertTo-ReplayArgument "C:\Program Files (x86)\OBS Studio") -eq '"C:\Program Files (x86)\OBS Studio"') "Path argument quoting failed"
+    Check ((ConvertTo-ReplayArgument "C:\Portable OBS\") -eq '"C:\Portable OBS\\"') "Trailing backslash would escape the quote"
+    Check ((ConvertTo-ReplayArgument "D:\") -eq '"D:\\"') "Drive root would escape the quote"
+    Expect-Failure { ConvertTo-ReplayArgument 'C:\bad"path' } "Invalid path"
+    . (Join-Path $Repo "packaging/windows/Installer.Core.ps1")
     $PackageVersion = (Assert-ReplayPackage $Kit).version
     $ZipPath = Join-Path $Out "obs-multi-replay-$PackageVersion-windows-x64.zip"
     Check (Test-Path -LiteralPath $ZipPath) "Installer ZIP missing"
     $Zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
         $Roots = @($Zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/').Split('/')[0] } | Sort-Object -Unique)
-        Check (($Roots -join ',') -eq "Install.cmd,PluginFiles,README.txt,Uninstall.cmd") "ZIP must contain exactly three files and PluginFiles"
+        Check (($Roots -join ',') -eq "install.bat,PluginFiles,README.txt,uninstall.bat") "ZIP must contain exactly three files and PluginFiles"
         # Windows PowerShell may use backslashes in ZIP entries; compare logical paths.
-        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "Install.cmd" }).Count -eq 1) "ZIP launcher missing"
+        Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "install.bat" }).Count -eq 1) "ZIP launcher missing"
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "PluginFiles/payload/obs-multi-replay/data/multi-replay-writer.exe" }).Count -eq 1) "ZIP helper missing"
         Check (@($Zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "PluginFiles/package.json" }).Count -eq 1) "ZIP manifest missing"
     } finally { $Zip.Dispose() }
-    Check (Test-Path -LiteralPath (Join-Path $ArchiveRoot "Install.cmd")) "Launcher missing"
+    Check (Test-Path -LiteralPath (Join-Path $ArchiveRoot "install.bat")) "Launcher missing"
     $ManifestPath = Join-Path $Kit "package.json"
     $ManifestText = Get-Content -LiteralPath $ManifestPath -Raw
     $Installed = Join-Path $Temp "Friend's [OBS] & Files/plugins/obs-multi-replay"
     $Profile = Join-Path $Temp "profiles/basic.ini"
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Profile)) | Out-Null
     [IO.File]::WriteAllText($Profile, "DO NOT CHANGE PROFILE")
+    $Preserved = @{}
+    foreach ($Name in @("config/obs-studio/basic/scenes/Friends.json", "config/obs-studio/hotkeys.ini", "recordings/keep.mkv")) {
+        $Path = Join-Path (Join-Path $Temp "portable OBS") $Name
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $Path)) | Out-Null
+        [IO.File]::WriteAllText($Path, "Preserve $Name")
+        $Preserved[$Path] = (Get-FileHash -LiteralPath $Path).Hash
+    }
     $Other = Join-Path (Split-Path -Parent $Installed) "another-plugin/keep.txt"
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Other)) | Out-Null
     [IO.File]::WriteAllText($Other, "DO NOT CHANGE OTHER PLUGIN")
@@ -101,6 +127,27 @@ try {
     [IO.File]::WriteAllText((Join-Path $Payload "data/.hidden-extra.txt"), "extra")
     Expect-Failure { Assert-ReplayPackage $Kit } "Unlisted package file"
     Remove-Item -LiteralPath (Join-Path $Payload "data/.hidden-extra.txt") -Force
+    # OneDrive cloud reparse points are allowed; symlinks and junctions stay refused.
+    $LinkTarget = Join-Path $Temp "link target"
+    [IO.Directory]::CreateDirectory($LinkTarget) | Out-Null
+    foreach ($Link in @((Join-Path $Temp "linked folder"), (Join-Path $Payload "data/linked"))) {
+        if ($env:OS -eq "Windows_NT") { New-Item -ItemType Junction -Path $Link -Value $LinkTarget | Out-Null }
+        else { New-Item -ItemType SymbolicLink -Path $Link -Value $LinkTarget | Out-Null }
+    }
+    Expect-Failure { Assert-ReplaySafePath (Join-Path $Temp "linked folder/plugins") } "Refusing a linked installation path"
+    Expect-Failure { Assert-ReplayPackage $Kit } "Links are not allowed"
+    if ($env:OS -eq "Windows_NT") {
+        Check ((Get-ReplayReparseTag (Join-Path $Temp "linked folder")) -eq [Convert]::ToUInt32("A0000003", 16)) "Junction tag not read"
+        foreach ($Tag in @("9000001A", "9000101A", "9000F01A")) {
+            Check ([ReplayReparseTag]::IsCloud([Convert]::ToUInt32($Tag, 16))) "OneDrive tag $Tag refused"
+        }
+        foreach ($Tag in @("A000000C", "A0000003", "8000001B", "0")) {
+            Check (![ReplayReparseTag]::IsCloud([Convert]::ToUInt32($Tag, 16))) "Tag $Tag allowed as a cloud file"
+        }
+    }
+    # Directory.Delete removes the link itself, never its target's contents.
+    foreach ($Link in @((Join-Path $Temp "linked folder"), (Join-Path $Payload "data/linked"))) { [IO.Directory]::Delete($Link) }
+    Assert-ReplayPackage $Kit | Out-Null
     $BadBinary = Join-Path $Temp "x86.dll"
     Write-FixtureBinary $BadBinary $true "x86 fixture" 0x14C
     Expect-Failure { Assert-ReplayWindowsBinary $BadBinary Dll } "Windows x64"
@@ -165,11 +212,12 @@ try {
     Check (!(Test-Path -LiteralPath $PortableDll)) "Uninstall left the portable DLL"
     Check ([IO.File]::ReadAllText($Profile) -eq "DO NOT CHANGE PROFILE") "Profile changed"
     Check ([IO.File]::ReadAllText($Other) -eq "DO NOT CHANGE OTHER PLUGIN") "Other plugin changed"
+    foreach ($Path in $Preserved.Keys) { Check ((Get-FileHash -LiteralPath $Path).Hash -eq $Preserved[$Path]) "Changed user file: $Path" }
     $MissingObs = Join-Path $Temp "removed OBS"
     Set-ReplayInstallTargets @(@{ Path = (Join-Path $MissingObs "obs-plugins/64bit/obs-multi-replay.dll"); Source = $null })
     Check (!(Test-Path -LiteralPath $MissingObs)) "Uninstall recreated a removed OBS folder"
     Check (@(Get-ChildItem -LiteralPath $Temp -Recurse -Force | Where-Object { $_.Name -match '^\.obs-multi-replay-(stage|backup)-' }).Count -eq 0) "Temporary install files remain"
-    Write-Host "PASS: script parsing, fixture ZIP/manifests, install/update/uninstall, portable layout, rollback, path quoting, corruption/x86 rejection, running OBS guard and profile preservation"
+    Write-Host "PASS: script parsing, fixture ZIP/manifests, install/update/uninstall, portable layout, rollback, path quoting, link/OneDrive tags, corruption/x86 rejection, running OBS guard and profile preservation"
 } finally {
     Remove-Item Function:\Move-Item -ErrorAction SilentlyContinue
     Remove-Item Function:\Get-Process -ErrorAction SilentlyContinue

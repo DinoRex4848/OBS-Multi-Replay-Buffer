@@ -2,7 +2,7 @@
 
 [README](../README.md) · [User guide](USER_GUIDE.md) · [Reproduction commands](DEVELOPMENT.md)
 
-Updated 2026-10-19. This is an experimental implementation. The summaries below distinguish historical development results, checks on the publication snapshot, and work still needed. Raw machine-specific logs and installation records are retained locally rather than published.
+Updated 2026-10-23. The 0.1.2 installer changes have a separate [local review and publication checklist](INSTALLER_REVIEW.md); historical green CI below does not validate the latest packages. This is an experimental implementation. The summaries below distinguish historical development results, checks on the publication snapshot, and work still needed. Raw machine-specific logs and installation records are retained locally rather than published.
 
 ## Current defaults
 

@@ -1,5 +1,8 @@
 name: Native builds
 on: [push, pull_request, workflow_dispatch]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -18,7 +21,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          dnf install -y git gcc-c++ cmake ninja-build obs-studio-devel qt6-qtbase-devel ffmpeg-free-devel python3
+          dnf install -y git gcc-c++ cmake ninja-build obs-studio-devel qt6-qtbase-devel ffmpeg-free-devel python3 shadow-utils util-linux
       - uses: actions/checkout@v4
       - name: Build and test
         run: |
@@ -26,7 +29,8 @@ jobs:
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
           python3 tests/flatpak_installer_tests.py
-          python3 tests/linux_package_tests.py
+          useradd --create-home replay-tests
+          runuser -u replay-tests -- python3 tests/linux_package_tests.py
           python3 scripts/package-fedora.py
       - uses: actions/upload-artifact@v4
         with:
@@ -43,9 +47,9 @@ jobs:
       - name: Build Windows SDK, plugin and helper
         shell: pwsh
         run: ./scripts/build-windows.ps1
-      - name: Test extracted Windows script package
+      - name: Test extracted batch installers and isolated OBS startup
         shell: powershell
-        run: ./tests/windows_package_tests.ps1
+        run: ./tests/windows_package_tests.ps1 -SmokeObs
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -90,6 +94,8 @@ jobs:
           path: |
             dist/*-linux-flatpak-x86_64.tar.gz
             dist/*-linux-flatpak-x86_64.tar.gz.sha256
+            dist/*-linux-flatpak-x86_64.run
+            dist/*-linux-flatpak-x86_64.run.sha256
             dist/linux-installer-notices.txt
             dist/linux-build.json
   draft-release:

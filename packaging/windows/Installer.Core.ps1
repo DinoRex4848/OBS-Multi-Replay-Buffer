@@ -54,7 +54,7 @@ function Assert-ReplayPackage {
     Assert-ReplaySafePath $Payload
     if ($Manifest.version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid plugin version" }
     foreach ($Item in Get-ChildItem -LiteralPath $Payload -Recurse -Force) {
-        if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Links are not allowed in the payload" }
+        if (Test-ReplayLinkedItem $Item) { throw "Links are not allowed in the payload" }
     }
     $Paths = @{}
     foreach ($File in $Manifest.files) {
@@ -86,17 +86,68 @@ function Assert-ReplayObsStopped {
     }
 }
 
+function Get-ReplayReparseTag {
+    param([string]$Path)
+    if (!("ReplayReparseTag" -as [type])) {
+        # FindFirstFile reports the tag without opening the file, so cloud files stay dehydrated.
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ReplayReparseTag {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct FindData {
+        public uint Attributes, Created1, Created2, Accessed1, Accessed2, Written1, Written2, SizeHigh, SizeLow, Tag, Reserved;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string Name;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 14)] public string ShortName;
+    }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr FindFirstFileW(string path, out FindData data);
+    [DllImport("kernel32.dll")]
+    static extern bool FindClose(IntPtr handle);
+    public static uint Get(string path) {
+        FindData data;
+        IntPtr handle = FindFirstFileW(path, out data);
+        if (handle == new IntPtr(-1)) throw new System.ComponentModel.Win32Exception();
+        FindClose(handle);
+        return (data.Attributes & 0x400) != 0 ? data.Tag : 0;
+    }
+    // IO_REPARSE_TAG_CLOUD through IO_REPARSE_TAG_CLOUD_F differ only in bits 12-15.
+    public static bool IsCloud(uint tag) { return (tag & 0xFFFF0FFF) == 0x9000001A; }
+}
+'@
+    }
+    return [ReplayReparseTag]::Get($Path)
+}
+
+function Test-ReplayLinkedItem {
+    param([IO.FileSystemInfo]$Item)
+    if (!($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $false }
+    # OneDrive files and folders are cloud reparse points, not links. Every other
+    # tag (symlinks, junctions, unknown) is refused; other systems report no tag.
+    if ($env:OS -ne "Windows_NT") { return $true }
+    $Tag = Get-ReplayReparseTag $Item.FullName
+    return ![ReplayReparseTag]::IsCloud($Tag)
+}
+
 function Assert-ReplaySafePath {
     param([string]$Path)
     $Current = [IO.Path]::GetFullPath($Path)
     while ($Current) {
         if (Test-Path -LiteralPath $Current) {
-            if ((Get-Item -LiteralPath $Current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            if (Test-ReplayLinkedItem (Get-Item -LiteralPath $Current -Force)) {
                 throw "Refusing a linked installation path: $Current"
             }
         }
         $Current = Split-Path -Parent $Current
     }
+}
+
+function ConvertTo-ReplayArgument {
+    param([string]$Value)
+    # Quote one command-line argument. Backslashes before the closing quote are
+    # doubled so "C:\OBS\" and "D:\" survive; Windows paths cannot contain quotes.
+    if ($Value.Contains('"')) { throw "Invalid path: $Value" }
+    return '"' + ($Value -replace '(\\+)$', '$1$1') + '"'
 }
 
 function Write-ReplayJournal {
@@ -195,15 +246,28 @@ function Set-ReplayInstallTargets {
     }
 }
 
-function Find-ReplayObs {
+function Get-ReplayObsCandidates {
     $Candidates = @()
+    # OBS's installer has used the default value of SOFTWARE\OBS Studio.
+    # Also accept InstallLocation from uninstall registrations and both views.
+    foreach ($Hive in @("HKLM", "HKCU")) {
+        foreach ($Subkey in @("SOFTWARE\OBS Studio", "SOFTWARE\WOW6432Node\OBS Studio")) {
+            $Item = Get-Item -LiteralPath ($Hive + ":\" + $Subkey) -ErrorAction SilentlyContinue
+            if ($Item) { $Candidates += $Item.GetValue("") }
+        }
+    }
     foreach ($Key in @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio",
+                       "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio",
                        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio")) {
         $Item = Get-ItemProperty -LiteralPath $Key -ErrorAction SilentlyContinue
         if ($Item -and $Item.PSObject.Properties["InstallLocation"]) { $Candidates += $Item.InstallLocation }
     }
     $Candidates += Join-Path $env:ProgramFiles "obs-studio"
-    foreach ($Path in $Candidates) {
+    return $Candidates
+}
+
+function Find-ReplayObs {
+    foreach ($Path in Get-ReplayObsCandidates) {
         if ($Path -and (Test-Path -LiteralPath (Join-Path $Path "bin/64bit/obs64.exe"))) { return $Path }
     }
     return ""

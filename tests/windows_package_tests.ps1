@@ -10,6 +10,8 @@ $Scratch = Join-Path $env:TEMP ("Replay setup's [acceptance] " + [Guid]::NewGuid
 $Standard = Join-Path $env:ProgramData "obs-studio/plugins/obs-multi-replay"
 $DiscoveryKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio"
 $DiscoveryKeyCreated = $false
+$AppDiscoveryKey = "HKCU:\SOFTWARE\OBS Studio"
+$AppDiscoveryCreated = $false
 if (Test-Path -LiteralPath $Standard) { throw "Use a disposable builder without an existing replay plugin" }
 function Check([bool]$Condition, [string]$Message) { if (!$Condition) { throw $Message } }
 $Logs = Join-Path $Repo "build-windows-package-logs"
@@ -18,11 +20,12 @@ $LegacySupport = Join-Path $env:ProgramFiles "OBS Multi-Length Replay"
 $Key = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS-Multi-Length-Replay_is1"
 if ((Test-Path -LiteralPath $Key) -or (Test-Path -LiteralPath $LegacySupport)) { throw "Use a disposable builder without legacy replay setup" }
 $LegacyCreated = $false
-function Run-Package([string]$Action, [string]$Mode, [string]$Root, [int]$Expected = 0, [switch]$Cancel) {
-    $Launcher = Join-Path $Package "$Action.cmd"
-    $Command = '""' + $Launcher + '" -Mode ' + $Mode
+function Run-Package([string]$Action, [string]$Mode, [string]$Root, [int]$Expected = 0, [switch]$Cancel, [switch]$Interactive) {
+    $Launcher = Join-Path $Package ($Action.ToLowerInvariant() + ".bat")
+    $Command = '""' + $Launcher + '"'
+    if ($Mode) { $Command += ' -Mode ' + $Mode }
     if ($Root) { $Command += ' -ObsRoot "' + $Root + '"' }
-    if (!$Cancel) { $Command += ' -NonInteractive' }
+    if (!$Cancel -and !$Interactive) { $Command += ' -NonInteractive' }
     $Command += '"'
     $Info = New-Object Diagnostics.ProcessStartInfo
     $Info.FileName = $env:ComSpec
@@ -35,6 +38,11 @@ function Run-Package([string]$Action, [string]$Mode, [string]$Root, [int]$Expect
     $Output = $Process.StandardOutput.ReadToEndAsync()
     $ErrorOutput = $Process.StandardError.ReadToEndAsync()
     if ($Cancel) { $Process.StandardInput.WriteLine("n"); $Process.StandardInput.WriteLine("") }
+    if ($Interactive) {
+        if (!$Mode) { $Process.StandardInput.WriteLine("") } # Accept normal OBS as the default.
+        $Process.StandardInput.WriteLine("y")
+        $Process.StandardInput.WriteLine("")
+    }
     $Process.StandardInput.Close()
     if (!$Process.WaitForExit(120000)) { $Process.Kill(); throw "Script package timed out" }
     Write-Host $Output.Result
@@ -119,17 +127,45 @@ public static class ReplayDllProbe {
         $Writer.Dispose()
     }
     if ($SmokeObs) {
-        $Process = Start-Process (Join-Path $Obs "bin/64bit/obs64.exe") -WorkingDirectory (Join-Path $Obs "bin/64bit") `
-            -ArgumentList '--portable --multi --disable-updater --disable-shutdown-check --disable-missing-files-check' -PassThru
+        $Config = Join-Path $Obs "config/obs-studio"
+        $Initial = "[General]`nFirstRun=true`n[Basic]`nProfile=Test`nProfileDir=Test`nSceneCollection=Test`nSceneCollectionFile=Test`n"
+        [IO.File]::WriteAllText((Join-Path $Config "global.ini"), $Initial)
+        [IO.File]::WriteAllText((Join-Path $Config "user.ini"), $Initial + "[BasicWindow]`nPreviewEnabled=false`n")
+        # Start-Process treats WorkingDirectory as a wildcard path in PowerShell
+        # 5.1. ProcessStartInfo preserves the literal apostrophes/brackets tested here.
+        $ObsInfo = New-Object Diagnostics.ProcessStartInfo
+        $ObsInfo.FileName = Join-Path $Obs "bin/64bit/obs64.exe"
+        $ObsInfo.WorkingDirectory = Join-Path $Obs "bin/64bit"
+        $ObsInfo.Arguments = '--portable --multi --disable-updater --disable-shutdown-check --disable-missing-files-check'
+        $ObsInfo.UseShellExecute = $false
+        $Process = [Diagnostics.Process]::Start($ObsInfo)
         try {
-            Start-Sleep -Seconds 10
-            $RuntimeLogs = Get-ChildItem (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt | Sort-Object LastWriteTime
+            # Software-rendered runners can take well over 10 s to load every module.
+            $Ready = '\[multi-replay\] Replay dock and Tools settings ready; manual startup'
+            $RuntimeLogs = @()
+            $Log = ""
+            $Deadline = (Get-Date).AddSeconds(90)
+            while ((Get-Date) -lt $Deadline -and $Log -notmatch $Ready -and !$Process.HasExited) {
+                Start-Sleep -Seconds 2
+                $RuntimeLogs = @(Get-ChildItem -LiteralPath (Join-Path $Obs "config/obs-studio/logs") -Filter *.txt -ErrorAction SilentlyContinue | Sort-Object LastWriteTime)
+                if ($RuntimeLogs.Count) { $Log = [string](Get-Content -LiteralPath $RuntimeLogs[-1].FullName -Raw) }
+            }
             Check ($RuntimeLogs.Count -gt 0) "OBS did not write a startup log"
-            $Log = Get-Content $RuntimeLogs[-1].FullName -Raw
-            Check ($Log -match '\[multi-replay\]') "Plugin did not initialize in OBS"
+            # Keep the log for the diagnostics artifact even if a check below fails.
+            [IO.Directory]::CreateDirectory($Logs) | Out-Null
+            Copy-Item -LiteralPath $RuntimeLogs[-1].FullName -Destination (Join-Path $Logs "obs-startup.log")
+            $PluginLines = ($Log -split "`n" | Where-Object { $_ -match 'multi-replay|LoadLibrary|not loaded' }) -join "`n"
+            Check ($Log -match $Ready) "Plugin did not finish initializing in OBS. Related log lines:`n$PluginLines"
+            Check ($Log -notmatch '\[multi-replay\] Session') "Replay unexpectedly started during OBS startup"
             Check ($Process.CloseMainWindow()) "Could not close isolated OBS normally"
             Check ($Process.WaitForExit(15000)) "OBS did not close normally"
-        } finally { if (!$Process.HasExited) { $Process.Kill(); $Process.WaitForExit() } }
+            Check ($Process.ExitCode -eq 0) "OBS exited with an error"
+            [IO.Directory]::CreateDirectory($Logs) | Out-Null
+            Copy-Item -LiteralPath $RuntimeLogs[-1].FullName -Destination (Join-Path $Logs "obs-startup-shutdown.log")
+        } finally {
+            if (!$Process.HasExited) { $Process.Kill(); $Process.WaitForExit() }
+            $Process.Dispose()
+        }
     }
     $ProfileHash = (Get-FileHash -LiteralPath $Profile).Hash
     $Moved = Join-Path $Scratch "moved portable OBS"
@@ -138,6 +174,21 @@ public static class ReplayDllProbe {
     Run-Package "Uninstall" "Portable" $Moved
     Check (!(Test-Path -LiteralPath (Join-Path $Moved "obs-plugins/64bit/obs-multi-replay.dll"))) "Moved portable uninstall left DLL"
     Check ((Get-FileHash -LiteralPath (Join-Path $Moved "config/obs-studio/basic/profiles/Test/basic.ini")).Hash -eq $ProfileHash) "Uninstall changed settings"
+    Run-Package "Install" "Standard" $Moved 1 # Portable markers must not silently select ProgramData.
+    Check (!(Test-Path -LiteralPath $Standard)) "Normal mode installed into a portable OBS target"
+    Remove-Item -LiteralPath (Join-Path $Moved "portable_mode.txt")
+    if (!(Test-Path -LiteralPath $AppDiscoveryKey)) {
+        New-Item -Path $AppDiscoveryKey -Force | Out-Null
+        $AppDiscoveryCreated = $true
+        Set-Item -LiteralPath $AppDiscoveryKey -Value $Moved
+        Run-Package "Install" "" "" -Interactive # Default normal choice and application-key discovery.
+    } else {
+        Run-Package "Install" "Standard" $Moved -Interactive
+    }
+    if ($AppDiscoveryCreated) {
+        Remove-Item -LiteralPath $AppDiscoveryKey -Force
+        $AppDiscoveryCreated = $false
+    }
     if (!(Test-Path -LiteralPath $DiscoveryKey)) {
         New-Item -Path $DiscoveryKey -Force | Out-Null
         $DiscoveryKeyCreated = $true
@@ -166,7 +217,7 @@ public static class ReplayDllProbe {
     Run-Package "Uninstall" "Standard" ""
     Check (!(Test-Path -LiteralPath $Standard)) "Standard uninstall left plugin"
     Check ((Get-FileHash -LiteralPath (Join-Path $Moved "config/obs-studio/basic/profiles/Test/basic.ini")).Hash -eq $ProfileHash) "Standard removal changed settings"
-    Write-Host "PASS: extracted CMD install/update/repair/cancel, dependency loading, portable relocation, EXE migration, removal without OBS/payload and settings preservation"
+    Write-Host "PASS: extracted BAT install/update/repair/cancel, dependency loading, portable relocation, legacy migration, removal without OBS/payload and settings preservation"
 } finally {
     $PackageLogs = Join-Path $Package "PluginFiles/Logs"
     if (Test-Path -LiteralPath $PackageLogs) {
@@ -176,6 +227,7 @@ public static class ReplayDllProbe {
     if ($LegacyCreated -and (Test-Path -LiteralPath $Key)) { Remove-Item -LiteralPath $Key -Force }
     if ($LegacyCreated -and (Test-Path -LiteralPath $LegacySupport)) { Remove-Item -LiteralPath $LegacySupport -Recurse -Force }
     if ($DiscoveryKeyCreated) { Remove-Item -LiteralPath $DiscoveryKey -Force }
+    if ($AppDiscoveryCreated) { Remove-Item -LiteralPath $AppDiscoveryKey -Force }
     # Do not silently erase a failed installation: keep it for inspection.
     if (!(Test-Path -LiteralPath $Standard)) { Remove-Item -LiteralPath $Scratch -Recurse -Force -ErrorAction SilentlyContinue }
 }

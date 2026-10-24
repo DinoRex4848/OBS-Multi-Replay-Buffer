@@ -1,10 +1,16 @@
 OBS Multi-Length Replay - Windows x64
 
 1. Close OBS and extract this entire ZIP into a writable folder.
-2. Double-click Install.cmd. Choose normal or portable OBS, then confirm.
+2. Double-click install.bat. Accept Normal (the default), check the OBS folder and confirm.
+   For portable OBS, choose Portable and its root folder.
 3. Restart OBS. Open Docks > Multi-Length Replay and Tools > Multi-Buffer Settings.
 
-Run Install.cmd again to update or repair. Run Uninstall.cmd to remove only
+If Windows shows "Windows protected your PC" (SmartScreen) for install.bat or
+uninstall.bat, click "More info", then "Run anyway". This appears because the
+scripts are unsigned and were downloaded. If "Open File - Security Warning"
+appears instead, click Run. Then approve the administrator (UAC) prompt.
+
+Run install.bat again to update or repair. Run uninstall.bat to remove only
 this plugin. Keep the package for removal, or use a newer package's uninstaller.
 Normal installs request administrator permission and use ProgramData. Portable
 installs stay in the OBS folder and need elevation only for protected folders.
@@ -12,9 +18,9 @@ OBS x64 32.1 or newer is required; the tested Windows target is OBS 32.1.1.
 No Python, compiler, or SDK is required. Built-in Windows PowerShell is used.
 
 Advanced / CI (from Command Prompt):
-Install.cmd -Mode Standard -NonInteractive
-Install.cmd -Mode Portable -ObsRoot "D:\Portable OBS" -NonInteractive
-Uninstall.cmd -Mode Portable -ObsRoot "D:\Moved OBS" -NonInteractive
+install.bat -Mode Standard -NonInteractive
+install.bat -Mode Portable -ObsRoot "D:\Portable OBS" -NonInteractive
+uninstall.bat -Mode Portable -ObsRoot "D:\Moved OBS" -NonInteractive
 Noninteractive mode never prompts for administrator access: run it elevated
 when the target requires it. No system execution-policy settings are changed.
 
