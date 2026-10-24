@@ -65,6 +65,11 @@ try {
     function Get-ReplayObsCandidates { @("/missing-obsolete-obs", $global:ReplayDetectionRoot) }
     Check ((Find-ReplayObs) -eq $DetectedRoot) "Custom OBS detection failed"
     Remove-Item Function:\Get-ReplayObsCandidates
+    # The elevated relaunch passes paths to powershell.exe -File as quoted arguments.
+    Check ((ConvertTo-ReplayArgument "C:\Program Files (x86)\OBS Studio") -eq '"C:\Program Files (x86)\OBS Studio"') "Path argument quoting failed"
+    Check ((ConvertTo-ReplayArgument "C:\Portable OBS\") -eq '"C:\Portable OBS\\"') "Trailing backslash would escape the quote"
+    Check ((ConvertTo-ReplayArgument "D:\") -eq '"D:\\"') "Drive root would escape the quote"
+    Expect-Failure { ConvertTo-ReplayArgument 'C:\bad"path' } "Invalid path"
     . (Join-Path $Repo "packaging/windows/Installer.Core.ps1")
     $PackageVersion = (Assert-ReplayPackage $Kit).version
     $ZipPath = Join-Path $Out "obs-multi-replay-$PackageVersion-windows-x64.zip"

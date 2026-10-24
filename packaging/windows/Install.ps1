@@ -74,14 +74,12 @@ try {
     }
     if ($NeedsAdmin -and !$Admin) {
         if ($NonInteractive -or $FromUac) { throw "Administrator access is required for this target. Run the launcher as administrator or use interactive mode." }
-        $Arguments = @{ Script = $PSCommandPath; Action = $Action; Mode = $Mode; ObsRoot = $ObsRoot; LogPath = $LogPath } | ConvertTo-Json -Compress
-        $Data = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Arguments))
-        $Command = '$a = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + $Data + '")) | ConvertFrom-Json; ' +
-                   '& $a.Script -Action $a.Action -Mode $a.Mode -ObsRoot $a.ObsRoot -LogPath $a.LogPath -FromUac; exit $LASTEXITCODE'
-        $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+        # -File passes each argument literally; -ObsRoot is omitted when empty.
+        $Arguments = "-NoProfile -ExecutionPolicy Bypass -File $(ConvertTo-ReplayArgument $PSCommandPath) -Action $Action -Mode $Mode"
+        if ($ObsRoot) { $Arguments += " -ObsRoot $(ConvertTo-ReplayArgument $ObsRoot)" }
+        $Arguments += " -LogPath $(ConvertTo-ReplayArgument $LogPath) -FromUac"
         $LogStart = (Get-Item -LiteralPath $LogPath).Length
-        $Process = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -Verb RunAs -Wait -PassThru `
-                                -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $Encoded"
+        $Process = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -Verb RunAs -Wait -PassThru -ArgumentList $Arguments
         $ExitCode = $Process.ExitCode
         # The elevated window closes when it finishes, so show its result here.
         $Bytes = [IO.File]::ReadAllBytes($LogPath)

@@ -142,6 +142,14 @@ function Assert-ReplaySafePath {
     }
 }
 
+function ConvertTo-ReplayArgument {
+    param([string]$Value)
+    # Quote one command-line argument. Backslashes before the closing quote are
+    # doubled so "C:\OBS\" and "D:\" survive; Windows paths cannot contain quotes.
+    if ($Value.Contains('"')) { throw "Invalid path: $Value" }
+    return '"' + ($Value -replace '(\\+)$', '$1$1') + '"'
+}
+
 function Write-ReplayJournal {
     param([string]$Path, [object]$Record)
     Assert-ReplaySafePath $Path
