@@ -50,9 +50,6 @@ Run-Native "cmake" @("--install", $Build, "--config", $Configuration, "--prefix"
 # already supplies the module's OBS/Qt/runtime dependencies in bin/64bit.
 $Helper = Join-Path $Package "data/obs-plugins/obs-multi-replay"
 Get-ChildItem (Join-Path $ObsDeps "bin") -Filter "*.dll" | Copy-Item -Destination $Helper
-Copy-Item (Join-Path $Repo "README.md"), (Join-Path $Repo "LICENSE"), (Join-Path $Repo "CHANGELOG.md") -Destination $Package
-Copy-Item (Join-Path $Repo "docs/THIRD_PARTY.md") -Destination $Package
-Copy-Item (Join-Path $Repo "docs") (Join-Path $Package "docs") -Recurse -Force
 $Notices = Join-Path $Package "third-party-notices"
 foreach ($Dependency in @($ObsDeps, $QtDeps)) {
     Get-ChildItem $Dependency -Recurse -File | Where-Object { $_.Name -match "^(LICENSE|COPYING|NOTICE)" } | ForEach-Object {

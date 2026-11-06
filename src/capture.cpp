@@ -16,6 +16,32 @@ extern "C" {
 namespace replay {
 Time clockNow() { return Time(os_gettime_ns() / 1000); }
 namespace {
+// Registered output types: with audio tracks, and video only.
+constexpr const char *avOutputId = "multi_length_replay";
+constexpr const char *videoOutputId = "multi_length_replay_video";
+// How long an accepted save waits for packets up to its endpoint.
+constexpr Time settleTimeout = fromSeconds(2);
+// No packets for this long, an independent encoder gap this long, or a
+// wall/monotonic clock jump this large ends the session.
+constexpr Time stallLimit = fromSeconds(5);
+// A packet gap longer than the track's usual spacing by more than this is a shared-encoder pause.
+constexpr Time pauseThreshold = 1000;
+// stopAndWait: the settle bound plus a margin, then time for libobs to detach the encoders.
+constexpr Time stopSettleTimeout = settleTimeout + 100000;
+constexpr Time encoderDetachTimeout = fromSeconds(3);
+constexpr auto shutdownDrainTimeout = std::chrono::seconds(15);
+constexpr auto workerWakeInterval = std::chrono::milliseconds(100);
+constexpr size_t maxQueuedSaves = 128;
+// Packets a save may gain after acceptance while its endpoint settles.
+constexpr size_t settleCapacity = 4096;
+constexpr uint64_t minHistoryBytes = 1024 * 1024;
+constexpr size_t recentResultCount = 20;
+std::string joined(const char *const *begin, const char *const *end)
+{
+  std::string text;
+  for (auto *item = begin; item != end; ++item) text += (text.empty() ? "" : ";") + std::string(*item);
+  return text;
+}
 struct OutputContext {
   obs_output_t *output;
   Capture *capture = nullptr;
@@ -120,17 +146,10 @@ Stream describe(obs_encoder_t *encoder, bool video)
   }
   return s;
 }
-std::string timestampName(Time endpoint = 0)
+std::string timestampName()
 {
-  auto now = std::chrono::system_clock::now();
-  if (endpoint) now += std::chrono::microseconds(endpoint - clockNow());
-  auto time = std::chrono::system_clock::to_time_t(now);
   std::tm local{};
-#ifdef _WIN32
-  localtime_s(&local, &time);
-#else
-  localtime_r(&time, &local);
-#endif
+  toLocalTime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()), local);
   std::ostringstream value;
   value << std::put_time(&local, "%Y-%m-%d_%H-%M-%S");
   return value.str();
@@ -146,7 +165,7 @@ std::shared_ptr<Format> Capture::describeOutput(obs_output_t *output) const
 {
   auto format = std::make_shared<Format>();
   format->streams.push_back(describe(obs_output_get_video_encoder(output), true));
-  for (size_t i = 0; i < 6; ++i) {
+  for (size_t i = 0; i < maxAudioTracks; ++i) {
     auto *encoder = obs_output_get_audio_encoder(output, i);
     if (!encoder) break;
     format->streams.push_back(describe(encoder, false));
@@ -157,8 +176,11 @@ std::shared_ptr<Format> Capture::describeOutput(obs_output_t *output) const
 }
 void registerReplayOutput()
 {
+  // OBS keeps pointers to these strings.
+  static const std::string video = joined(videoCodecs.data(), videoCodecs.data() + videoCodecs.size());
+  static const std::string audio = joined(audioCodecs.data(), audioCodecs.data() + audioCodecs.size());
   obs_output_info info{};
-  info.id = "multi_length_replay";
+  info.id = avOutputId;
   info.flags = OBS_OUTPUT_AV | OBS_OUTPUT_ENCODED | OBS_OUTPUT_MULTI_TRACK;
   info.get_name = outputName;
   info.create = createOutput;
@@ -166,10 +188,10 @@ void registerReplayOutput()
   info.start = startOutput;
   info.stop = stopOutput;
   info.encoded_packet = receivePacket;
-  info.encoded_video_codecs = "h264;hevc;av1";
-  info.encoded_audio_codecs = "aac;flac;opus;pcm_s16le;pcm_s24le;pcm_f32le";
+  info.encoded_video_codecs = video.c_str();
+  info.encoded_audio_codecs = audio.c_str();
   obs_register_output(&info);
-  info.id = "multi_length_replay_video";
+  info.id = videoOutputId;
   info.flags = OBS_OUTPUT_VIDEO | OBS_OUTPUT_ENCODED;
   obs_register_output(&info);
 }
@@ -181,7 +203,7 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
     std::lock_guard<std::mutex> lock(mutex_);
     if (collecting_ || captureActive_ || writing_ || !pending_.empty() || !ready_.empty())
       throw std::runtime_error("Buffer is active or draining; wait before starting again");
-    if (options.budget < writerReserve + 1024 * 1024)
+    if (options.budget < writerReserve + minHistoryBytes)
       throw std::runtime_error("RAM budget must exceed writer reserve plus 1 MiB");
     options_ = options;
     obs_video_info namingInfo{};
@@ -204,9 +226,10 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
     paused_ = resumeNoted_ = false;
     // An encoder that is already running sent its priming packet to someone else.
     primed_.fill(false);
-    for (size_t i = 0; i < audio.size() && i < 6; ++i) primed_[i + 1] = !obs_encoder_active(audio[i]);
+    for (size_t i = 0; i < audio.size() && i < maxAudioTracks; ++i) primed_[i + 1] = !obs_encoder_active(audio[i]);
     session_ = sessionName();
     message_ = "Starting";
+    failed_ = false;
     needsStop_ = false;
     abortWrites_ = false;
     headersReady_ = false;
@@ -218,8 +241,7 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
   }
   auto *settings = obs_data_create();
   obs_data_set_int(settings, "capture_context", int64_t(reinterpret_cast<intptr_t>(this)));
-  output_ = obs_output_create(audio.empty() ? "multi_length_replay_video" : "multi_length_replay",
-                              "Multi-Length Replay", settings, nullptr);
+  output_ = obs_output_create(audio.empty() ? videoOutputId : avOutputId, "Multi-Length Replay", settings, nullptr);
   obs_data_release(settings);
   if (!output_) throw std::runtime_error("Cannot create replay packet output");
   obs_output_set_video_encoder(output_, video);
@@ -231,6 +253,7 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
     ledger_->used = 0;
     const char *error = obs_output_get_last_error(output_);
     message_ = error && *error ? error : "Replay encoder initialization failed; inspect OBS log";
+    failed_ = true;
     throw std::runtime_error(message_);
   }
 }
@@ -245,6 +268,7 @@ bool Capture::begin(obs_output_t *output)
     lastPoll_ = 0;
     lastWall_ = 0;
     message_ = "Buffering";
+    failed_ = false;
     if (options_.shared)
       blog(LOG_INFO,
            "[multi-replay] Session %s: SHARING the OBS recording's %s encoder '%s', %zu audio tracks; no additional "
@@ -269,7 +293,7 @@ void Capture::stop()
     collecting_ = false;
     if (!stopRequested_) {
       stopRequested_ = true;
-      stopDeadline_ = clockNow() + 2000000;
+      stopDeadline_ = clockNow() + settleTimeout;
       // Accepted snapshots own their pins. Unsaved rolling history is no
       // longer needed; delayed delivery is retained only for accepted jobs.
       if (history_) history_->clear();
@@ -298,6 +322,7 @@ void Capture::failCapture(std::string error)
   collecting_ = false;
   needsStop_ = true;
   message_ = std::move(error);
+  failed_ = true;
   blog(LOG_ERROR, "[multi-replay] %s", message_.c_str());
   condition_.notify_all();
 }
@@ -327,7 +352,7 @@ void Capture::receive(encoder_packet *packet)
     const bool firstPacket = rawMark_[track] == 0;
     if (!firstPacket) {
       const Time delta = raw - rawMark_[track];
-      if (delta < 0 || (!options_.shared && delta > 5000000)) {
+      if (delta < 0 || (!options_.shared && delta > stallLimit)) {
         failCapture("Replay timestamp discontinuity; manual restart required");
         return;
       }
@@ -336,7 +361,7 @@ void Capture::receive(encoder_packet *packet)
       // The spacing is observed rather than taken from encoder metadata.
       if (!step_[track] || delta < step_[track])
         step_[track] = delta;
-      else if (options_.shared && delta - step_[track] > 1000) {
+      else if (options_.shared && delta - step_[track] > pauseThreshold) {
         shift_[track] += delta - step_[track];
         if (!track)
           blog(LOG_INFO, "[multi-replay] Shared encoder paused for %.3f s; that time is cut from the replay timeline",
@@ -356,7 +381,8 @@ void Capture::receive(encoder_packet *packet)
       return;
     }
     if (packet->size > maxPacketSize) {
-      failCapture("Encoded frame exceeds the bounded writer's 8 MiB packet limit");
+      failCapture("Encoded frame exceeds the bounded writer's " + std::to_string(maxPacketSize / (1024 * 1024)) +
+                  " MiB packet limit");
       return;
     }
     if (!history_->prepare(packet->size)) {
@@ -398,9 +424,9 @@ uint64_t Capture::save(Time duration, Time endpoint, const std::filesystem::path
   if (!collecting_) throw std::runtime_error("Replay buffer is stopped or draining");
   if (duration <= 0 || duration > options_.longest)
     throw std::runtime_error("Preset duration is outside this session's configured history");
-  if (pending_.size() + ready_.size() + size_t(writing_) >= 128)
-    throw std::runtime_error("Save queue reached its 128-request safety limit");
-  const size_t capacity = history_->count() + 4096;
+  if (pending_.size() + ready_.size() + size_t(writing_) >= maxQueuedSaves)
+    throw std::runtime_error("Save queue reached its " + std::to_string(maxQueuedSaves) + "-request safety limit");
+  const size_t capacity = history_->count() + settleCapacity;
   const uint64_t bytes = jobOverhead + uint64_t(capacity) * refOverhead;
   // This save may pin the whole history. Under memory pressure, shorten the
   // unpinned history now so packets still fit until the writer releases pins.
@@ -418,7 +444,7 @@ uint64_t Capture::save(Time duration, Time endpoint, const std::filesystem::path
   job.accepted = clockNow();
   const auto requestWall = std::chrono::system_clock::now() + std::chrono::microseconds(endpoint - clockNow());
   job.stem = replayFilename(options_.filenames, namingVideo_, std::chrono::system_clock::to_time_t(requestWall),
-                            duration / 1000000);
+                            duration / microsecondsPerSecond);
   job.id = ++sequence_;
   job.allowSpaces = options_.filenames.allowSpaces;
   pending_.push_back(std::move(job));
@@ -434,7 +460,7 @@ void Capture::settle()
     bool passed = true;
     for (size_t i = 0; !job.frozen && i < format_->streams.size(); ++i)
       passed &= watermark_[i] > job.clip.requestedEnd + settleWindow;
-    bool timeout = clockNow() - job.accepted >= 2000000;
+    bool timeout = clockNow() - job.accepted >= settleTimeout;
     if (captureActive_ && !passed && !timeout) break;
     if (!passed && (timeout || !captureActive_)) {
       if (!job.clip.partial.empty()) job.clip.partial += "; ";
@@ -469,13 +495,13 @@ void Capture::record(Result result)
          (result.mediaEnd - result.endpoint) / 1e3, result.partial.c_str());
   results_.push_back(result);
   completed_.push_back(std::move(result));
-  if (results_.size() > 20) results_.erase(results_.begin());
+  if (results_.size() > recentResultCount) results_.erase(results_.begin());
 }
 void Capture::worker()
 {
   std::unique_lock<std::mutex> lock(mutex_);
   for (;;) {
-    condition_.wait_for(lock, std::chrono::milliseconds(100), [&] { return terminate_ || !ready_.empty(); });
+    condition_.wait_for(lock, workerWakeInterval, [&] { return terminate_ || !ready_.empty(); });
     if (terminate_ && ready_.empty()) break;
     settle();
     if (ready_.empty()) continue;
@@ -496,14 +522,14 @@ void Capture::worker()
             if (abortWrites_) throw std::runtime_error("Orderly shutdown drain deadline expired");
           },
           job.allowSpaces);
-    Result saved{result.path,
-                 result.error,
-                 job.clip.partial,
-                 job.clip.requestedDuration,
-                 job.clip.end - job.clip.start,
-                 job.clip.requestedEnd,
-                 job.clip.start,
-                 job.clip.end};
+    Result saved;
+    saved.path = result.path;
+    saved.error = result.error;
+    saved.partial = job.clip.partial;
+    saved.requested = job.clip.requestedDuration;
+    saved.actual = job.clip.end - job.clip.start;
+    saved.endpoint = job.clip.requestedEnd;
+    saved.mediaEnd = job.clip.end;
     saved.id = job.id;
     if (!saved.error.empty()) saved.error += "\nDestination: " + job.folder.u8string();
     std::vector<PacketPtr>().swap(job.clip.packets);
@@ -522,18 +548,21 @@ Status Capture::status() const
   Status s;
   s.collecting = collecting_;
   s.draining = !collecting_ && (captureActive_ || writing_ || !pending_.empty() || !ready_.empty());
-  s.needsStop = needsStop_;
   s.shared = options_.shared && (collecting_ || captureActive_);
   s.paused = collecting_ && paused_ && !resumeNoted_;
   s.degraded = history_ && history_->degraded() && history_->available() < options_.longest;
   s.available = history_ ? history_->available() : 0;
   s.memory = ledger_ ? ledger_->used.load() : 0;
-  s.budget = options_.budget;
   s.queued = pending_.size() + ready_.size() + size_t(writing_);
   s.message = message_;
   s.active = active_;
-  s.results = results_;
+  s.failed = failed_;
   return s;
+}
+std::vector<Result> Capture::recentResults() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return results_;
 }
 std::vector<Result> Capture::takeCompleted()
 {
@@ -551,11 +580,11 @@ void Capture::poll()
     const Time wall =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count();
-    if (collecting_ && lastPoll_ && std::abs((wall - lastWall_) - (monotonic - lastPoll_)) > 5000000)
+    if (collecting_ && lastPoll_ && std::abs((wall - lastWall_) - (monotonic - lastPoll_)) > stallLimit)
       failCapture("Suspend/resume or system-clock discontinuity; manual restart required");
     lastPoll_ = monotonic;
     lastWall_ = wall;
-    if (collecting_ && !(paused_ && !resumeNoted_) && clockNow() - lastPacket_ > 5000000)
+    if (collecting_ && !(paused_ && !resumeNoted_) && clockNow() - lastPacket_ > stallLimit)
       failCapture("Replay encoder stopped delivering packets; manual restart required");
     stopNow = needsStop_ || (captureActive_ && stopRequested_ && (pending_.empty() || monotonic >= stopDeadline_));
   }
@@ -590,7 +619,7 @@ void Capture::stopAndWait()
 {
   stop();
   // Accepted saves get the normal settlement bound before capture is forced down.
-  const Time settleDeadline = clockNow() + 2100000;
+  const Time settleDeadline = clockNow() + stopSettleTimeout;
   bool active = true;
   while (active) {
     poll();
@@ -604,7 +633,7 @@ void Capture::stopAndWait()
   if (active && output_) obs_output_force_stop(output_);
   // libobs detaches the encoders on its own thread; callers such as a profile
   // switch need them released before OBS resets video.
-  const Time released = clockNow() + 3000000;
+  const Time released = clockNow() + encoderDetachTimeout;
   while (output_ && obs_output_active(output_) && clockNow() < released)
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
 }
@@ -614,7 +643,7 @@ void Capture::shutdown()
   stopAndWait();
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    if (!condition_.wait_for(lock, std::chrono::seconds(15),
+    if (!condition_.wait_for(lock, shutdownDrainTimeout,
                              [&] { return !writing_ && pending_.empty() && ready_.empty(); }))
       abortWrites_ = true;
     terminate_ = true;

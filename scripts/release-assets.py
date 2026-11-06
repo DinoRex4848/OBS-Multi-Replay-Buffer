@@ -4,17 +4,14 @@ import argparse
 import hashlib
 import json
 import pathlib
-import re
-import subprocess
 import stat
+import subprocess
+import sys
 import tarfile
 import zipfile
 
-REPO = pathlib.Path(__file__).resolve().parents[1]
-
-
-def version():
-    return re.search(r"project\(obs-multi-replay VERSION ([\d.]+)", (REPO / "CMakeLists.txt").read_text())[1]
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from project import REPO, version  # noqa: E402
 
 
 def check_tag(reference):

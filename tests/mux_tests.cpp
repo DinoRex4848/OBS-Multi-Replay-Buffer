@@ -1,4 +1,5 @@
-#include "mux.hpp"
+#include "writer_process.hpp"
+#include "test_support.hpp"
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -9,10 +10,6 @@ extern "C" {
 #include <libavutil/mathematics.h>
 }
 using namespace replay;
-#define CHECK(expr)                                                                                                    \
-  do {                                                                                                                 \
-    if (!(expr)) throw std::runtime_error(#expr);                                                                      \
-  } while (0)
 uint64_t checksum(const std::filesystem::path &path)
 {
   std::ifstream file(path, std::ios::binary);
@@ -24,14 +21,7 @@ uint64_t checksum(const std::filesystem::path &path)
   }
   return value;
 }
-void fault(const char *value)
-{
-#ifdef _WIN32
-  _putenv_s("REPLAY_TEST_FAULT", value);
-#else
-  setenv("REPLAY_TEST_FAULT", value, 1);
-#endif
-}
+void fault(const char *value) { setEnvironment("REPLAY_TEST_FAULT", value); }
 int main(int argc, char **argv)
 {
   if (argc != 5) {

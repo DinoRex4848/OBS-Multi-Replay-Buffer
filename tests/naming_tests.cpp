@@ -1,22 +1,18 @@
 #include "naming.hpp"
+#include "test_support.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
 
 using namespace replay;
-#define CHECK(expr)                                                                                                    \
-  do {                                                                                                                 \
-    if (!(expr)) throw std::runtime_error(#expr);                                                                      \
-  } while (0)
 int main()
 {
   try {
+    setEnvironment("TZ", "UTC");
 #ifdef _WIN32
-    _putenv_s("TZ", "UTC");
     _tzset();
 #else
-    setenv("TZ", "UTC", 1);
     tzset();
 #endif
     std::tm request{};

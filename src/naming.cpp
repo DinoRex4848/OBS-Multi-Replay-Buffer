@@ -6,15 +6,19 @@
 #include <stdexcept>
 
 namespace replay {
+bool toLocalTime(std::time_t time, std::tm &local)
+{
+#ifdef _WIN32
+  return localtime_s(&local, &time) == 0;
+#else
+  return localtime_r(&time, &local) != nullptr;
+#endif
+}
 std::string replayFilename(const FilenameOptions &options, const FilenameVideo &video, std::time_t requestTime,
                            int64_t seconds)
 {
   std::tm local{};
-#ifdef _WIN32
-  if (localtime_s(&local, &requestTime)) throw std::runtime_error("Cannot format replay request time");
-#else
-  if (!localtime_r(&requestTime, &local)) throw std::runtime_error("Cannot format replay request time");
-#endif
+  if (!toLocalTime(requestTime, local)) throw std::runtime_error("Cannot format replay request time");
   std::string pattern = options.format.empty() ? "%CCYY-%MM-%DD %hh-%mm-%ss" : options.format;
   std::replace(pattern.begin(), pattern.end(), '\\', '/');
   if (!options.prefix.empty()) {

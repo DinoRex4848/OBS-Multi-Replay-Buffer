@@ -17,4 +17,6 @@ struct FilenameVideo {
 // OBS 32.1 filename tokens, evaluated at the request's local wall time rather
 // than the later writer time. Returns a sanitized, relative path without MKV.
 std::string replayFilename(const FilenameOptions &, const FilenameVideo &, std::time_t requestTime, int64_t seconds);
+// Thread-safe local time conversion; false if the time cannot be represented.
+bool toLocalTime(std::time_t time, std::tm &local);
 }

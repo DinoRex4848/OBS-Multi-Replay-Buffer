@@ -1,3 +1,4 @@
+#include "constants.hpp"
 #include "wire.hpp"
 #include <algorithm>
 #include <cstdio>
@@ -91,7 +92,7 @@ int main()
   int result = 1;
   try {
     auto header = readValue<replay::WireHeader>();
-    if (header.magic != replay::wireMagic || !header.streams || header.streams > 7)
+    if (header.magic != replay::wireMagic || !header.streams || header.streams > uint32_t(replay::maxStreams))
       throw std::runtime_error("Invalid writer protocol");
     auto path = std::filesystem::u8path(readString(header.pathSize));
 #ifdef _WIN32

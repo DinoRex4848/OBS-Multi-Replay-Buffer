@@ -2,7 +2,6 @@
 /.deps/
 /build*/
 /dist/
-/SOURCE_SNAPSHOT.json
 __pycache__/
 *.py[cod]
 *.incomplete.mkv

@@ -1,4 +1,4 @@
-#include "settings.hpp"
+#include "recording_encoders.hpp"
 #include <util/bmem.h>
 #include <algorithm>
 #include <cmath>
@@ -9,6 +9,9 @@
 
 namespace replay {
 namespace {
+// Names the frontend gives its recording video encoders.
+constexpr const char *advancedVideoName = "advanced_video_recording";
+constexpr const char *simpleVideoName = "simple_video_recording";
 struct Data {
   obs_data_t *p;
   explicit Data(obs_data_t *value = nullptr) : p(value ? value : obs_data_create()) {}
@@ -18,6 +21,29 @@ std::string get(config_t *config, const char *section, const char *key)
 {
   auto *value = config_get_string(config, section, key);
   return value ? value : "";
+}
+// Advanced Output per-track keys, such as Track1Name; tracks count from 1.
+std::string trackKey(int track, const char *suffix) { return "Track" + std::to_string(track) + suffix; }
+// Throws unless the writer can mux the encoder's codec, releasing the encoder first.
+void requireCodec(obs_encoder_t *encoder, bool video)
+{
+  const std::string codec = obs_encoder_get_codec(encoder);
+  const auto supported = [&](const auto &codecs) {
+    return std::find(codecs.begin(), codecs.end(), codec) != codecs.end();
+  };
+  if (video ? supported(videoCodecs) : supported(audioCodecs)) return;
+  obs_encoder_release(encoder);
+  throw std::runtime_error(std::string("Unsupported recording ") + (video ? "video" : "audio") + " codec: " + codec);
+}
+// Applies the streaming service's recommended settings, as the frontend does.
+// Returns false when the user chose to keep their own video bitrate instead.
+bool applyServiceSettings(obs_service_t *service, config_t *config, obs_data_t *video, obs_data_t *audio)
+{
+  const int original = int(obs_data_get_int(video, "bitrate"));
+  obs_service_apply_encoder_settings(service, video, audio);
+  if (!config_get_bool(config, "Stream1", "IgnoreRecommended")) return true;
+  obs_data_set_int(video, "bitrate", original);
+  return false;
 }
 std::filesystem::path profilePath()
 {
@@ -40,11 +66,7 @@ obs_encoder_t *createVideo(const std::string &id, obs_data_t *settings)
   if (!encoderAvailable(id)) throw std::runtime_error("Recording video encoder is unavailable: " + id);
   auto *encoder = obs_video_encoder_create(id.c_str(), "Multi-Replay video", settings, nullptr);
   if (!encoder) throw std::runtime_error("Cannot create recording video encoder: " + id);
-  std::string codec = obs_encoder_get_codec(encoder);
-  if (codec != "h264" && codec != "hevc" && codec != "av1") {
-    obs_encoder_release(encoder);
-    throw std::runtime_error("Unsupported recording video codec: " + codec);
-  }
+  requireCodec(encoder, true);
   obs_encoder_set_video(encoder, obs_get_video());
   return encoder;
 }
@@ -68,13 +90,6 @@ int closestBitrate(const std::string &id, int requested)
   obs_properties_destroy(props);
   return chosen;
 }
-void requireAudioCodec(obs_encoder_t *encoder)
-{
-  std::string codec = obs_encoder_get_codec(encoder);
-  if (codec != "aac" && codec != "flac" && codec != "opus" && codec != "pcm_s16le" && codec != "pcm_s24le" &&
-      codec != "pcm_f32le")
-    throw std::runtime_error("Unsupported recording audio codec: " + codec);
-}
 obs_encoder_t *createAudio(const std::string &id, const std::string &name, int mix, int bitrate)
 {
   if (!encoderAvailable(id)) throw std::runtime_error("Recording audio encoder is unavailable: " + id);
@@ -83,12 +98,7 @@ obs_encoder_t *createAudio(const std::string &id, const std::string &name, int m
   obs_data_set_string(data.p, "rate_control", "CBR");
   auto *encoder = obs_audio_encoder_create(id.c_str(), name.c_str(), data.p, size_t(mix), nullptr);
   if (!encoder) throw std::runtime_error("Cannot create recording audio encoder: " + id);
-  try {
-    requireAudioCodec(encoder);
-  } catch (...) {
-    obs_encoder_release(encoder);
-    throw;
-  }
+  requireCodec(encoder, false);
   obs_encoder_set_audio(encoder, obs_get_audio());
   return encoder;
 }
@@ -130,11 +140,7 @@ obs_encoder_t *shareVideo(const Frontend &frontend, const char *name, const std:
     obs_encoder_release(encoder);
     throw ShareUnavailable("OBS's recording encoder does not match the saved recording settings");
   }
-  std::string codec = obs_encoder_get_codec(encoder);
-  if (codec != "h264" && codec != "hevc" && codec != "av1") {
-    obs_encoder_release(encoder);
-    throw std::runtime_error("Unsupported recording video codec: " + codec);
-  }
+  requireCodec(encoder, true);
   if (!obs_encoder_active(encoder)) {
     obs_encoder_update(encoder, settings);
     obs_encoder_set_video(encoder, obs_get_video());
@@ -152,12 +158,7 @@ obs_encoder_t *shareAudio(const Frontend &frontend, size_t index, const std::str
     obs_encoder_release(encoder);
     throw ShareUnavailable("OBS's recording audio tracks do not match the saved recording settings");
   }
-  try {
-    requireAudioCodec(encoder);
-  } catch (...) {
-    obs_encoder_release(encoder);
-    throw;
-  }
+  requireCodec(encoder, false);
   if (!obs_encoder_active(encoder)) {
     obs_encoder_update(encoder, settings);
     obs_encoder_set_audio(encoder, obs_get_audio());
@@ -200,17 +201,17 @@ bool encoderAvailable(const std::string &id)
     if (id == candidate) return true;
   return false;
 }
-Encoders::~Encoders()
+void Encoders::release()
 {
   if (video) obs_encoder_release(video);
   for (auto *encoder : audio) obs_encoder_release(encoder);
 }
+Encoders::~Encoders() { release(); }
 Encoders::Encoders(Encoders &&other) noexcept { *this = std::move(other); }
 Encoders &Encoders::operator=(Encoders &&other) noexcept
 {
   if (this != &other) {
-    if (video) obs_encoder_release(video);
-    for (auto *encoder : audio) obs_encoder_release(encoder);
+    release();
     video = std::exchange(other.video, nullptr);
     audio = std::move(other.audio);
     other.audio.clear();
@@ -247,9 +248,8 @@ std::string recordingFingerprint()
   for (auto &section : keys)
     for (auto *name : section.second)
       text << section.first << ':' << name << '=' << get(config, section.first, name) << '\n';
-  for (int i = 1; i <= 6; ++i)
-    for (auto *suffix : {"Name", "Bitrate"})
-      text << get(config, "AdvOut", ("Track" + std::to_string(i) + suffix).c_str()) << '\n';
+  for (int track = 1; track <= maxAudioTracks; ++track)
+    for (auto *suffix : {"Name", "Bitrate"}) text << get(config, "AdvOut", trackKey(track, suffix).c_str()) << '\n';
   for (auto *name : {"recordEncoder.json", "streamEncoder.json"}) {
     Data data(encoderFile(name));
     text << obs_data_get_json(data.p);
@@ -291,20 +291,16 @@ Encoders build(bool share)
       } else {
         Data audioSettings;
         auto *service = obs_frontend_get_streaming_service();
-        if (service && config_get_bool(config, "AdvOut", "ApplyServiceSettings")) {
-          int original = int(obs_data_get_int(settings.p, "bitrate"));
-          obs_service_apply_encoder_settings(service, settings.p, audioSettings.p);
-          if (config_get_bool(config, "Stream1", "IgnoreRecommended"))
-            obs_data_set_int(settings.p, "bitrate", original);
-        }
+        if (service && config_get_bool(config, "AdvOut", "ApplyServiceSettings"))
+          applyServiceSettings(service, config, settings.p, audioSettings.p);
       }
       if (output) obs_output_release(output);
     }
     audioId = get(config, "AdvOut", "RecAudioEncoder");
     if (share && (streamVideo || audioId == "none"))
       throw ShareUnavailable("OBS is set to record with the streaming encoder");
-    result.video = share ? shareVideo(frontend, "advanced_video_recording", videoId, settings.p)
-                         : createVideo(videoId, settings.p);
+    result.video =
+        share ? shareVideo(frontend, advancedVideoName, videoId, settings.p) : createVideo(videoId, settings.p);
     rescale(result.video, config, streamVideo ? "RescaleRes" : "RecRescaleRes",
             streamVideo ? "RescaleFilter" : "RecRescaleFilter");
     if (audioId == "none") audioId = get(config, "AdvOut", "AudioEncoder");
@@ -312,7 +308,7 @@ Encoders build(bool share)
     tracks = int(config_get_int(config, "AdvOut", flv ? "FLVTrack" : "RecTracks"));
     // The frontend's fallback for legacy profiles with no recording track selected.
     if (!tracks) tracks = int(config_get_int(config, "AdvOut", "TrackIndex"));
-    if (flv) tracks = tracks >= 1 && tracks <= 6 ? 1 << (tracks - 1) : 0;
+    if (flv) tracks = tracks >= 1 && tracks <= maxAudioTracks ? 1 << (tracks - 1) : 0;
     result.folder = std::filesystem::u8path(get(config, "AdvOut", "RecFilePath"));
   } else {
     auto quality = get(config, "SimpleOutput", "RecQuality");
@@ -333,14 +329,9 @@ Encoders build(bool share)
         obs_data_set_string(settings.p, "x264opts", get(config, "SimpleOutput", "x264Settings").c_str());
       Data audioSettings;
       obs_data_set_int(audioSettings.p, "bitrate", bitrate);
-      if (auto *service = obs_frontend_get_streaming_service()) {
-        int original = int(obs_data_get_int(settings.p, "bitrate"));
-        obs_service_apply_encoder_settings(service, settings.p, audioSettings.p);
-        if (config_get_bool(config, "Stream1", "IgnoreRecommended"))
-          obs_data_set_int(settings.p, "bitrate", original);
-        else
+      if (auto *service = obs_frontend_get_streaming_service())
+        if (applyServiceSettings(service, config, settings.p, audioSettings.p))
           bitrate = int(obs_data_get_int(audioSettings.p, "bitrate"));
-      }
       audioId = simpleAudioId(get(config, "SimpleOutput", "StreamAudioEncoder"));
       tracks = 1;
     } else {
@@ -367,7 +358,7 @@ Encoders build(bool share)
       if (get(config, "SimpleOutput", "RecFormat2") == "flv") tracks = 1;
     }
     result.video =
-        share ? shareVideo(frontend, "simple_video_recording", videoId, settings.p) : createVideo(videoId, settings.p);
+        share ? shareVideo(frontend, simpleVideoName, videoId, settings.p) : createVideo(videoId, settings.p);
     result.folder = std::filesystem::u8path(get(config, "SimpleOutput", "FilePath"));
   }
   std::ostringstream summary;
@@ -375,13 +366,11 @@ Encoders build(bool share)
           << obs_encoder_get_codec(result.video) << ")\n";
   summary << obs_encoder_get_width(result.video) << "×" << obs_encoder_get_height(result.video) << " at "
           << result.videoInfo.fps_num << '/' << result.videoInfo.fps_den << " fps\nAudio: ";
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < maxAudioTracks; ++i) {
     if (!(tracks & (1 << i))) continue;
-    auto name = get(config, "AdvOut", ("Track" + std::to_string(i + 1) + "Name").c_str());
+    auto name = get(config, "AdvOut", trackKey(i + 1, "Name").c_str());
     if (name.empty()) name = "Track " + std::to_string(i + 1);
-    int trackBitrate =
-        advanced ? int(config_get_int(config, "AdvOut", ("Track" + std::to_string(i + 1) + "Bitrate").c_str()))
-                 : bitrate;
+    int trackBitrate = advanced ? int(config_get_int(config, "AdvOut", trackKey(i + 1, "Bitrate").c_str())) : bitrate;
     if (share) {
       // Frontend creation names: per-track encoders, or one FLV encoder in Simple mode.
       std::string frontendName = "adv_record_audio_" + std::to_string(i);
@@ -426,7 +415,6 @@ obs_encoder_t *frontendRecordingVideo()
   auto *config = obs_frontend_get_profile_config();
   if (!config) return nullptr;
   Frontend frontend;
-  return frontend.video(get(config, "Output", "Mode") == "Advanced" ? "advanced_video_recording"
-                                                                    : "simple_video_recording");
+  return frontend.video(get(config, "Output", "Mode") == "Advanced" ? advancedVideoName : simpleVideoName);
 }
 }

@@ -1,12 +1,10 @@
-#include "mux.hpp"
+#include "writer_process.hpp"
 #include "wire.hpp"
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
-#include <fstream>
 #include <mutex>
-#include <sstream>
 #include <stdexcept>
 #include <thread>
 #ifdef _WIN32
@@ -28,9 +26,16 @@ extern char **environ;
 #endif
 
 namespace replay {
+// Set once at module load, before any capture starts.
 static std::filesystem::path helper;
 void setWriterPath(std::filesystem::path p) { helper = std::move(p); }
 namespace {
+// The writer is stopped if it accepts no data, or does not finish, within this limit.
+constexpr auto stallLimit = std::chrono::seconds(10);
+const std::string stallLimitText = "(" + std::to_string(stallLimit.count()) + "-second limit)";
+constexpr size_t pipeChunk = 65536;
+// "Name (2).mkv" up to this suffix before giving up, preserving existing files.
+constexpr unsigned maxCollisionSuffix = 1000;
 class Child {
 public:
 #ifdef _WIN32
@@ -84,9 +89,9 @@ public:
     watchdog = std::thread([this] {
       std::unique_lock<std::mutex> lock(watchMutex);
       while (!watchDone) {
-        auto deadline = activity + std::chrono::seconds(10);
+        auto deadline = activity + stallLimit;
         if (watchCondition.wait_until(lock, deadline) == std::cv_status::timeout && !watchDone &&
-            std::chrono::steady_clock::now() >= activity + std::chrono::seconds(10)) {
+            std::chrono::steady_clock::now() >= activity + stallLimit) {
           TerminateProcess(process, 2);
           break;
         }
@@ -168,7 +173,7 @@ public:
     auto size = read(diagnostics, buffer, sizeof(buffer));
     if (size > 0) message.assign(buffer, size_t(size));
 #endif
-    return message.empty() ? "MKV writer stopped or disk stalled (10-second limit)" : message;
+    return message.empty() ? "MKV writer stopped or disk stalled " + stallLimitText : message;
   }
   void closeInput()
   {
@@ -190,7 +195,7 @@ public:
     while (size) {
 #ifdef _WIN32
       DWORD n = 0;
-      BOOL ok = WriteFile(input, bytes, DWORD(std::min(size, size_t(65536))), &n, nullptr);
+      BOOL ok = WriteFile(input, bytes, DWORD(std::min(size, pipeChunk)), &n, nullptr);
       if (!ok || !n) throw std::runtime_error(diagnostic());
       {
         std::lock_guard<std::mutex> lock(watchMutex);
@@ -202,10 +207,10 @@ public:
       pollfd fd{input, POLLOUT, 0};
       int ready;
       do {
-        ready = poll(&fd, 1, 10000);
+        ready = poll(&fd, 1, int(std::chrono::milliseconds(stallLimit).count()));
       } while (ready < 0 && errno == EINTR);
       if (ready <= 0 || (fd.revents & (POLLERR | POLLHUP))) throw std::runtime_error(diagnostic());
-      auto n = write(input, bytes, std::min(size, size_t(65536)));
+      auto n = write(input, bytes, std::min(size, pipeChunk));
       if (n < 0 && (errno == EINTR || errno == EAGAIN)) continue;
       if (n <= 0) throw std::runtime_error("MKV writer pipe failed");
 #endif
@@ -218,8 +223,8 @@ public:
   {
     closeInput();
 #ifdef _WIN32
-    if (WaitForSingleObject(process, 10000) != WAIT_OBJECT_0)
-      throw std::runtime_error("MKV finalization stalled (10-second limit)");
+    if (WaitForSingleObject(process, DWORD(std::chrono::milliseconds(stallLimit).count())) != WAIT_OBJECT_0)
+      throw std::runtime_error("MKV finalization stalled " + stallLimitText);
     DWORD code;
     GetExitCodeProcess(process, &code);
     {
@@ -232,16 +237,17 @@ public:
     process = nullptr;
     return int(code);
 #else
-    for (int i = 0; i < 100; ++i) {
+    constexpr auto pollInterval = std::chrono::milliseconds(100);
+    for (int i = 0; i < stallLimit / pollInterval; ++i) {
       int status = 0;
       auto result = waitpid(process, &status, WNOHANG);
       if (result == process) {
         process = -1;
         return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(pollInterval);
     }
-    throw std::runtime_error("MKV finalization stalled (10-second limit)");
+    throw std::runtime_error("MKV finalization stalled " + stallLimitText);
 #endif
   }
 };
@@ -262,8 +268,10 @@ MuxResult writeMkv(const Format &format, Selection &clip, const std::filesystem:
       return stem +
              (suffix ? (allowSpaces ? " (" + std::to_string(suffix + 1) + ")" : "_" + std::to_string(suffix + 1)) : "");
     };
-    auto path = folder / std::filesystem::u8path(candidate() + ".mkv");
-    auto incomplete = folder / std::filesystem::u8path(candidate() + ".incomplete.mkv");
+    auto finalPath = [&] { return folder / std::filesystem::u8path(candidate() + ".mkv"); };
+    auto incompletePath = [&] { return folder / std::filesystem::u8path(candidate() + ".incomplete.mkv"); };
+    auto path = finalPath();
+    auto incomplete = incompletePath();
     if (!std::filesystem::is_directory(folder))
       throw std::runtime_error("Replay destination is missing or not a directory");
     const auto relative = std::filesystem::u8path(stem);
@@ -272,10 +280,10 @@ MuxResult writeMkv(const Format &format, Selection &clip, const std::filesystem:
       if (part == "..") throw std::runtime_error("Replay filename cannot leave the destination folder");
     std::filesystem::create_directories(path.parent_path());
     while (std::filesystem::exists(path) || std::filesystem::exists(incomplete)) {
-      if (++suffix > 1000)
+      if (++suffix > maxCollisionSuffix)
         throw std::runtime_error("Replay filename collision capacity exceeded; existing files were preserved");
-      path = folder / std::filesystem::u8path(candidate() + ".mkv");
-      incomplete = folder / std::filesystem::u8path(candidate() + ".incomplete.mkv");
+      path = finalPath();
+      incomplete = incompletePath();
     }
     Child child(helper);
     auto filename = incomplete.u8string();
@@ -316,7 +324,9 @@ MuxResult writeMkv(const Format &format, Selection &clip, const std::filesystem:
     // Rebase every stream against the SAME system presentation origin. Keep
     // negative video DTS for B-frame decoding; the muxer shifts streams together.
     for (auto &p : clip.packets) {
-      if (p->size > maxPacketSize) throw std::runtime_error("Encoded packet exceeds the writer's 8 MiB bound");
+      if (p->size > maxPacketSize)
+        throw std::runtime_error("Encoded packet exceeds the writer's " +
+                                 std::to_string(maxPacketSize / (1024 * 1024)) + " MiB bound");
       WirePacket w{p->pts - clip.start, p->dts - clip.start, p->duration,
                    uint32_t(p->track),  p->key ? 1U : 0U,    uint32_t(p->size)};
       child.send(w);
@@ -332,16 +342,16 @@ MuxResult writeMkv(const Format &format, Selection &clip, const std::filesystem:
 #ifdef _WIN32
     while (!MoveFileW(incomplete.c_str(), path.c_str())) {
       auto error = GetLastError();
-      if ((error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) || ++suffix > 1000)
+      if ((error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) || ++suffix > maxCollisionSuffix)
         throw std::runtime_error("Cannot publish replay filename; incomplete file retained");
-      path = folder / std::filesystem::u8path(candidate() + ".mkv");
+      path = finalPath();
     }
 #else
     while (syscall(SYS_renameat2, AT_FDCWD, incomplete.c_str(), AT_FDCWD, path.c_str(), RENAME_NOREPLACE)) {
-      if (errno != EEXIST || ++suffix > 1000)
+      if (errno != EEXIST || ++suffix > maxCollisionSuffix)
         throw std::runtime_error("Cannot publish replay filename; incomplete file retained: " +
                                  std::string(strerror(errno)));
-      path = folder / std::filesystem::u8path(candidate() + ".mkv");
+      path = finalPath();
     }
 #endif
     result.path = path;

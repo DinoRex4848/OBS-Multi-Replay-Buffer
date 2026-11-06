@@ -27,6 +27,28 @@ Use a build environment matching the OBS installation that will load the plugin.
 
 Normal replay saving uses FFmpeg libraries. The `ffmpeg` and `ffprobe` command-line tools are needed only for media verification.
 
+## Source layout
+
+| Path | Contents |
+| --- | --- |
+| `src/module.cpp` | OBS module entry points; creates the controller and forwards frontend events |
+| `src/replay_controller.*` | Coordinates the dock, settings window, hotkeys, saved settings and capture session |
+| `src/replay_dock.*`, `src/settings_dialog.*` | The two Qt views; they build widgets and hold no session logic |
+| `src/preferences.*` | Profile settings JSON: key names, defaults and the rollback-safe save |
+| `src/hotkeys.*` | Frontend hotkeys and their saved bindings |
+| `src/status_text.*` | Dock and Diagnostics text as plain functions, unit-tested |
+| `src/constants.hpp`, `src/identifiers.hpp` | Defaults and ranges; IDs stored in user profiles that must never change |
+| `src/recording_encoders.*` | Maps OBS recording settings to encoders, or attaches to the frontend's own |
+| `src/capture.*`, `src/history.*` | Packet history, save selection, the save queue and the writer worker |
+| `src/writer_process.*`, `src/wire.hpp`, `src/writer.cpp` | The writer helper process: client, protocol and the FFmpeg MKV writer |
+| `src/naming.*`, `src/timebase.hpp` | OBS filename tokens and timestamp conversion |
+| `src/integration_test.cpp` | UI test driver, compiled only with `REPLAY_INTEGRATION_TEST=ON` |
+| `packaging/` | Files shipped in the installers; `packaging/linux/replay_installer.py` and `packaging/windows/Installer.Core.ps1` are the transaction engines |
+| `scripts/` | Build, packaging, release and test tooling; `scripts/project.py` holds shared facts such as the version |
+| `tests/` | C++ unit tests, installer and release tests, and the OBS probe and UI launchers |
+
+The plugin version is set only in `CMakeLists.txt`.
+
 ## Flatpak OBS on Linux
 
 Install x86_64 OBS from Flathub and its matching SDK. The locally tested OBS 32.2.2 deployment uses Freedesktop SDK 25.08, Qt 6.11.1, and FFmpeg 8.1.2.
@@ -36,12 +58,12 @@ flatpak install --user flathub "$(flatpak info --show-sdk com.obsproject.Studio)
 ./scripts/build-flatpak.sh
 ```
 
-The script builds against the installed app's `/app` headers/libraries, runs history and filename tests, and creates a development package under `dist/`. It records the OBS deployment commit and payload hashes. If OBS changes during the build or before installation, rebuild for that deployment. A matching SDK alone does not establish compatibility with a different OBS version.
+The script builds against the installed app's `/app` headers/libraries, runs the CTest suite, and creates the same `.run` and `.tar.gz` installers as a release under `dist/`. It records the OBS deployment commit and payload hashes. If OBS changes during the build or before installation, rebuild for that deployment. A matching SDK alone does not establish compatibility with a different OBS version.
 
-To install your own build, close OBS first:
+To install your own build, close OBS first and run the installer it produced:
 
 ```bash
-python3 scripts/install-flatpak.py
+sh dist/obs-multi-replay-*-linux-flatpak-x86_64.run
 ```
 
 The installer checks hashes and the current app commit, refuses changes while OBS is running, and backs up an existing plugin before replacement. The destination is:
@@ -55,13 +77,11 @@ The installer checks hashes and the current app commit, refuses changes while OB
 
 Restart OBS, then open **Docks → Multi-Length Replay** and **Tools → Multi-Buffer Settings**. The SDK is needed for building, not for normal plugin use.
 
-For an optional migration from an existing native OBS profile with the same profile directory name, use `--migrate-profile PROFILE_DIRECTORY`. This copies only the replay section, including preset and hotkey preferences. Different existing destination replay settings are preserved and cause migration to be refused. A fresh installation does not need migration.
+Backups are stored under `~/.var/app/com.obsproject.Studio/config/obs-studio/replay-plugin-backups/`. For rollback, close OBS and replace only the plugin directory with the backup's `plugin/` contents. To remove the plugin, run the installer with `--uninstall`. Profiles and saved clips remain.
 
-Backups are stored under `~/.var/app/com.obsproject.Studio/config/obs-studio/replay-plugin-backups/`. For rollback, close OBS and replace only the plugin directory with the backup's `plugin/` contents. If settings were migrated, restore the backed-up profile's `basic.ini` as well. For removal, delete only the `plugins/obs-multi-replay` directory while OBS is closed. Profiles and saved clips remain.
+## Fedora RPM OBS (compile and test only)
 
-## Fedora RPM OBS
-
-The native path was tested on Fedora 44 with RPM OBS 32.1.1. Install release-compatible development packages from your configured Fedora/RPM Fusion repositories:
+Native RPM OBS is not a packaged target; releases ship for Flatpak OBS and Windows. Fedora's packages are still the quickest way to compile the plugin and run the unit tests, and CI does exactly that. Install the development packages from your configured Fedora/RPM Fusion repositories:
 
 ```bash
 sudo dnf install gcc-c++ cmake ninja-build obs-studio-devel qt6-qtbase-devel ffmpeg-free-devel python3
@@ -69,7 +89,6 @@ cmake -S . -B build-native -G Ninja -DCMAKE_BUILD_TYPE=Release -DREPLAY_INTEGRAT
 cmake --build build-native --parallel
 ctest --test-dir build-native --output-on-failure
 python3 tests/flatpak_installer_tests.py
-python3 scripts/package-fedora.py --build build-native
 ```
 
 If your OBS installation uses RPM Fusion's full FFmpeg packages, use its matching `ffmpeg-devel` rather than mixing incompatible development packages. The CMake dependency check rejects Linux headers or libraries with the wrong FFmpeg major versions. Encoding is supplied by OBS's encoder plugins, not the package used for muxing headers.
@@ -80,17 +99,7 @@ Alternatively, use rootless Podman:
 FEDORA_RELEASE=44 ./scripts/build-container.sh
 ```
 
-This installs build dependencies inside the container, builds into `build-container/`, runs CTest, and packages into `dist/`. `FEDORA_RELEASE=44` explicitly selects the tested distribution even when the host is not Fedora.
-
-To install a locally built Fedora package, close OBS and run:
-
-```bash
-./scripts/install-fedora.sh
-```
-
-It installs under `~/.config/obs-studio/plugins/obs-multi-replay/`, using the same `bin/64bit` and `data` layout as the Flatpak package. This path is for RPM OBS. Remove only that plugin directory while OBS is closed to uninstall; saved clips and per-profile preferences remain.
-
-`scripts/local-build.sh` is a legacy convenience wrapper for a developer-created `.deps/root` toolchain. That toolchain is not included. Use the native or container commands above for a clean checkout.
+This installs build dependencies inside the container, builds into `build-container/`, and runs CTest. The host needs no development packages or sudo. `FEDORA_RELEASE=44` explicitly selects the tested distribution even when the host is not Fedora.
 
 ## Windows x64
 
@@ -110,7 +119,18 @@ Native package acceptance exercises install/update/repair/removal, migration fro
 
 ## Automated tests
 
-History and naming tests are registered with CTest. They cover earlier-keyframe selection, warmup, shared packet lifetimes, reordered video, audio boundaries, pressure/admission behavior, and filename formatting/collisions.
+CTest runs these on every build, including in CI:
+
+| Test | Covers |
+| --- | --- |
+| `history` | Earlier-keyframe selection, warmup, shared packet lifetimes, reordered video, audio boundaries, pressure and admission |
+| `naming` | OBS filename tokens, prefixes/suffixes, sanitizing and rejected paths |
+| `timebase` | Encoder timestamp conversion |
+| `status_text` | Dock and Diagnostics text, number formatting and message priority |
+| `preferences` (Linux) | Profile settings keys, defaults, an older release's JSON and round trips |
+| `mux` (Linux) | Remuxing `tests/fixtures/mux-input.mkv` through the real writer, name collisions, missing folders/helper, disk full and a stalled writer (about 10 seconds) |
+
+Windows runs the first four; the others need OBS's or FFmpeg's DLLs, which the Windows package tests exercise instead.
 
 ```bash
 ctest --test-dir build-native --output-on-failure
@@ -124,7 +144,7 @@ flatpak run --devel --filesystem="$PWD" --command=ctest com.obsproject.Studio \
   --test-dir "$PWD/build-flatpak" --output-on-failure
 ```
 
-The Flatpak installer tests use temporary fixtures and do not install into your OBS profile. They check successful/repeated migration, rollback, corrupted payloads, conflicting settings, and refusal of test-driver packages. Windows installer fixtures run under Windows PowerShell:
+The Flatpak installer tests use temporary fixtures and do not install into your OBS profile. They check install/update/repair/downgrade, rollback and interrupted-transaction recovery, corrupted payloads, locking, symlinks, and refusal of test-driver packages. Windows installer fixtures run under Windows PowerShell:
 
 ```powershell
 ./tests/windows_installer_tests.ps1
@@ -140,6 +160,8 @@ flatpak run --devel --filesystem="$PWD" --command=python3 com.obsproject.Studio 
 ## Native media and mux probes
 
 These tests need the appropriate OBS runtime, graphics environment, and encoder. Close other OBS instances before GPU/UI tests. They generate media under the chosen build directory; they do not need your normal scene collection.
+
+`mux` already runs under CTest with a small fixture clip. To remux a real probe recording instead, use the commands below.
 
 For Flatpak:
 
@@ -171,20 +193,26 @@ For Flatpak, create the driver build with:
 ./scripts/build-flatpak.sh --ui-test
 ```
 
-The launcher requires a separate test-only OBS configuration template: a directory containing `obs-studio/`, an initialized test profile under `basic/profiles/`, and a blank scene collection. Initialize this in an isolated OBS configuration, with recording paths pointing at scratch directories. No ready-made profile, personal scene collection, or credentials are included in Git.
-
-Place your isolated template at `build/ui-config`, then run:
+The launcher needs a test-only OBS configuration template, never your own. Create one:
 
 ```bash
-./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py --build build-flatpak-ui \
-  --template build/ui-config --scratch build-flatpak/ui-layout --scenario layout
-./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py --build build-flatpak-ui \
-  --template build/ui-config --scratch build-flatpak/ui-layout --scenario restore
-./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py --build build-flatpak-ui \
-  --template build/ui-config --scratch build-flatpak/ui-settings --scenario settings
-python3 scripts/test-obs-ui.py --build build-flatpak --template build/ui-config \
-  --scratch build-flatpak/ui-production --scenario production --flatpak
+python3 tests/create_smoke_template.py build-ui-template --advanced-nvenc
 ```
+
+Without `--advanced-nvenc` the template uses Simple Output with x264. That is enough for the production smoke, but the `shared` and `folders` scenarios need short keyframe intervals and fail with it. Then run each scenario in a fresh scratch directory:
+
+```bash
+./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py \
+  --template build-ui-template --scratch build-ui/layout --scenario layout
+./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py \
+  --template build-ui-template --scratch build-ui/layout --scenario restore
+./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py \
+  --template build-ui-template --scratch build-ui/settings --scenario settings
+python3 scripts/test-obs-ui.py --build build-flatpak --template build-ui-template \
+  --scratch build-ui/production --scenario production --flatpak
+```
+
+The full set is `layout` then `restore` (same scratch), `settings`, `folders` then `folders-restore` (same scratch), `independent`, `shared` and `reset`. Wait for each OBS instance to exit before starting the next. Each run writes `report.json` with every step's UI state; comparing reports before and after a change is a quick way to check that a refactor changed no behavior.
 
 The launcher copies the template and rewrites configuration/recording paths into a distinct scratch directory. Use a fresh scratch directory for each new scenario, except paired restore runs that intentionally reuse the earlier configuration. It refuses concurrent OBS instances. Flatpak's production smoke sets the scratch configuration inside the sandbox and tracks the test instance for cleanup.
 
@@ -192,16 +220,10 @@ Additional scenarios cover per-preset folders, encoder-mode restart, shared/inde
 
 ## Packaging and CI
 
-Generated archives live in ignored `dist/`; none are committed. The source packager requires a Git checkout with at least one commit:
+Generated archives live in ignored `dist/`; none are committed. GitHub provides source archives for every tag.
 
-```bash
-python3 scripts/package-source.py
-```
+[Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) runs Fedora and MSVC builds with their tests; the Fedora job produces no artifacts. Windows also tests the extracted BAT package against an official checksum-pinned OBS runtime, including actual DLL/writer loading, EXE migration, relocation, cancellation, corrupted payload refusal and removal without OBS/payload. Linux runs transaction/package tests on Fedora and Ubuntu; Ubuntu builds the production archive against the pinned Flatpak SDK and tests shell install/repair/removal with isolated user files, followed by an isolated OBS load/shutdown smoke.
 
-It creates ZIP/tar source snapshots, a Git bundle, and checksums. It includes non-ignored uncommitted files and the checkout's history, so inspect those before sharing a source package. It does not alter the source checkout's branch or index. A downloaded GitHub source ZIP has no Git history; clone the repository to use this script.
+Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. Both a single-file `.run` and the extracted tar format are produced. `bash scripts/build-flatpak.sh` produces the payload, the four-entry tar archive and the `.run`. `python3 scripts/package_linux.py --build build-flatpak` repackages an existing production build. The plugin version comes only from `CMakeLists.txt`; Python scripts read it through `scripts/project.py`, which also lists the documents copied into user packages. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
 
-[Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) retains Fedora/MSVC core builds and fixture checks. Windows also tests the extracted BAT package against an official checksum-pinned OBS runtime, including actual DLL/writer loading, EXE migration, relocation, cancellation, corrupted payload refusal and removal without OBS/payload. Linux runs transaction/package tests on Fedora and Ubuntu; Ubuntu builds the production archive against the pinned Flatpak SDK and tests shell install/repair/removal with isolated user files, followed by an isolated OBS load/shutdown smoke.
-
-Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. Both a single-file `.run` and the extracted tar format are produced. `bash scripts/build-flatpak.sh` produces the payload and four-entry tar archive. `python3 scripts/package_linux.py` repackages an existing validated payload. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
-
-Version tags matching CMake create unpublished draft prereleases with the Windows ZIP and Linux run/tar assets, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks. The 0.1.2 local changes and unrun acceptance checks are recorded in [INSTALLER_REVIEW.md](INSTALLER_REVIEW.md).
+Version tags matching CMake create unpublished draft prereleases with the Windows ZIP and Linux run/tar assets, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks; see [Validation](VALIDATION.md).

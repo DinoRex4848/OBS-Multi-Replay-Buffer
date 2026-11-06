@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Internal cleanup with no intended change to the plugin's behavior, settings or installers.
+
+- Split the 1,600-line plugin source into a module entry point, a controller, the dock and settings views, and settings, hotkey and status-text modules. The UI test driver is now a separate file built only for tests.
+- Rename `settings.*` to `recording_encoders.*` and `mux.*` to `writer_process.*`; name the capture and writer limits; remove unused fields and code.
+- Run the writer remux test and new status-text and profile-settings tests automatically.
+- Packages now include only user documentation (README, changelog, user guide, installation guide and third-party notes), not developer notes.
+- Remove developer-only scripts that releases do not use: the Fedora tarball and installer, the RPM-to-Flatpak profile migration, the `.deps` toolchain wrapper and the source snapshot packager.
+- Document a known issue: with Simple Output and shared encoding, starting replay while a recording is already running fails.
+
 ## 0.1.2
 
 - Provide simple install.bat/uninstall.bat launchers with normal/portable OBS detection, elevation only as needed, and preserved transaction safeguards.
