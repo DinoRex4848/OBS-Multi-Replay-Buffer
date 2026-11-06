@@ -36,7 +36,7 @@ The `shared` and `folders` scenarios need the Advanced NVENC template, as the ne
 
 With **Simple Output** and shared encoding, starting the replay buffer while a recording is already running fails after about five seconds with "Replay encoder stopped delivering packets". The UI scenario reproduces this with both x264 and NVENC Simple profiles. Advanced Output, and starting replay before recording, work. This predates the restructuring; until it is fixed, Simple Output users can start replay first or check **Use separate replay encoder**.
 
-## Installer acceptance for 1.5.0
+## Installer acceptance for 0.1.5
 
 The CI-built Windows ZIP and Linux `.run` for the presets change passed the release checks and were installed and used in OBS on Windows and on Linux Flatpak OBS 32.2.2 before release.
 
