@@ -76,7 +76,7 @@ jobs:
         run: |
           python3 tests/flatpak_installer_tests.py
           python3 tests/linux_package_tests.py
-          python3 tests/linux_package_tests.py --production-archive dist/*-linux-flatpak-x86_64.tar.gz
+          python3 tests/linux_package_tests.py --production-archive dist/*-linux-flatpak-x86_64.zip
       - name: Production OBS load smoke with isolated configuration
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -88,10 +88,8 @@ jobs:
           name: linux-installer-x86_64
           if-no-files-found: error
           path: |
-            dist/*-linux-flatpak-x86_64.tar.gz
-            dist/*-linux-flatpak-x86_64.tar.gz.sha256
-            dist/*-linux-flatpak-x86_64.run
-            dist/*-linux-flatpak-x86_64.run.sha256
+            dist/*-linux-flatpak-x86_64.zip
+            dist/*-linux-flatpak-x86_64.zip.sha256
             dist/linux-installer-notices.txt
             dist/linux-build.json
   draft-release:

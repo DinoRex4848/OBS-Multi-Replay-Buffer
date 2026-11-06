@@ -4,6 +4,7 @@
 
 - Ask for confirmation before the trash button removes a preset.
 - Keep the plugin's hotkeys together at the top of **OBS Settings → Hotkeys**. All eight save hotkeys are now always listed, so adding a preset no longer puts its hotkey at the bottom until OBS restarts; hotkeys of presets that do not exist are marked "(no preset)" and do nothing.
+- Simpler downloads: one ZIP per system. The Windows ZIP has `install.bat`; the Linux ZIP extracts to a folder with `install.sh`. The Linux `.run` and `.tar.gz` downloads are no longer made.
 - Add an **Open OBS Hotkeys…** button to **Tools → Multi-Buffer Settings** that opens OBS's Settings on the Hotkeys page.
 
 ## 0.1.5

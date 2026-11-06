@@ -5,7 +5,7 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 [![Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml/badge.svg)](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml)
 [Installer instructions](docs/INSTALLERS.md) · [User guide](docs/USER_GUIDE.md) · [Build from source](docs/DEVELOPMENT.md) · [Validation and limitations](docs/VALIDATION.md) · [Changelog](CHANGELOG.md)
 
-Version `0.1.6` asks before removing a preset, keeps the plugin's hotkeys together at the top of OBS's Hotkeys settings, and adds a settings button that opens them. Version `0.1.5` added one to eight replay presets, with simple Windows batch installers and a single-file Linux Flatpak installer.
+Version `0.1.6` asks before removing a preset, keeps the plugin's hotkeys together at the top of OBS's Hotkeys settings, and adds a settings button that opens them. Each release has one ZIP per system: Windows has `install.bat`, Linux has `install.sh`. Version `0.1.5` added one to eight replay presets.
 
 <p align="center">
   <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three presets, each with Save and remove buttons, an add button, Start Buffering, and Settings" width="360">
@@ -30,7 +30,7 @@ Close OBS, then choose the download for your OBS installation from a successful 
 
 - **Normally installed Windows OBS:** extract the entire Windows ZIP, double-click `install.bat`, accept **Normal** (the default), check the detected OBS folder, and confirm. Approve administrator access when requested. Run `uninstall.bat` to remove the plugin.
 - **Portable Windows OBS:** extract the entire Windows ZIP, run `install.bat`, and choose **Portable** and your OBS folder. Use `uninstall.bat` for removal.
-- **Linux Flatpak OBS:** run `sh ./obs-multi-replay-0.1.6-linux-flatpak-x86_64.run` in a terminal, without sudo. Add `--uninstall` for removal. Python 3.10+ and a matching x86_64 Flatpak OBS are required.
+- **Linux Flatpak OBS:** extract the entire Linux ZIP, open a terminal in the extracted folder and run `sh ./install.sh`, without sudo. Run `sh ./uninstall.sh` to remove the plugin. Python 3.10+ and a matching x86_64 Flatpak OBS are required.
 - **Native Linux RPM/deb OBS:** the Flatpak installer cannot install into native OBS. Fedora 44 has a separate developer build path; a general native Linux installer is not offered.
 
 Run the same installer again to update or repair. Profiles, scenes, replay settings, hotkeys and recordings are preserved. Linux packages must match the exact OBS commit in `linux-build.json`; they do not change OBS or install host dependencies. See [installer instructions](docs/INSTALLERS.md) for compatibility and logs, and [validation](docs/VALIDATION.md) for test evidence. Old drafts are superseded; draft releases are visible to repository maintainers until published.

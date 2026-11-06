@@ -58,12 +58,12 @@ flatpak install --user flathub "$(flatpak info --show-sdk com.obsproject.Studio)
 ./scripts/build-flatpak.sh
 ```
 
-The script builds against the installed app's `/app` headers/libraries, runs the CTest suite, and creates the same `.run` and `.tar.gz` installers as a release under `dist/`. It records the OBS deployment commit and payload hashes. If OBS changes during the build or before installation, rebuild for that deployment. A matching SDK alone does not establish compatibility with a different OBS version.
+The script builds against the installed app's `/app` headers/libraries, runs the CTest suite, and creates the same installer ZIP as a release under `dist/`, also extracted in `dist/linux-installer/`. It records the OBS deployment commit and payload hashes. If OBS changes during the build or before installation, rebuild for that deployment. A matching SDK alone does not establish compatibility with a different OBS version.
 
 To install your own build, close OBS first and run the installer it produced:
 
 ```bash
-sh dist/obs-multi-replay-*-linux-flatpak-x86_64.run
+sh dist/linux-installer/install.sh
 ```
 
 The installer checks hashes and the current app commit, refuses changes while OBS is running, and backs up an existing plugin before replacement. The destination is:
@@ -224,6 +224,6 @@ Generated archives live in ignored `dist/`; none are committed. GitHub provides 
 
 [Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml) runs Fedora and MSVC builds with their tests; the Fedora job produces no artifacts. Windows also tests the extracted BAT package against an official checksum-pinned OBS runtime, including actual DLL/writer loading, EXE migration, relocation, cancellation, corrupted payload refusal and removal without OBS/payload. Linux runs transaction/package tests on Fedora and Ubuntu; Ubuntu builds the production archive against the pinned Flatpak SDK and tests shell install/repair/removal with isolated user files, followed by an isolated OBS load/shutdown smoke.
 
-Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. Both a single-file `.run` and the extracted tar format are produced. `bash scripts/build-flatpak.sh` produces the payload, the four-entry tar archive and the `.run`. `python3 scripts/package_linux.py --build build-flatpak` repackages an existing production build. The plugin version comes only from `CMakeLists.txt`; Python scripts read it through `scripts/project.py`, which also lists the documents copied into user packages. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
+Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. `bash scripts/build-flatpak.sh` produces the payload and the installer ZIP, whose single top folder holds `install.sh`, `uninstall.sh`, `README.txt` and `PluginFiles`. `install.sh` restores the writer's executable permission, because some unzip tools drop permissions. `python3 scripts/package_linux.py --build build-flatpak` repackages an existing production build. The plugin version comes only from `CMakeLists.txt`; Python scripts read it through `scripts/project.py`, which also lists the documents copied into user packages. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
 
 Version tags matching CMake create unpublished draft prereleases with the Windows ZIP and Linux run/tar assets, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks; see [Validation](VALIDATION.md).
