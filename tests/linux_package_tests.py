@@ -8,13 +8,29 @@ import pathlib
 import shutil
 import subprocess
 import sys
-import tarfile
+import zipfile
 import tempfile
 import unittest
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'scripts'))
 from package_linux import package_scripts
+
+
+def extract(archive, destination, keep_modes=True):
+    """Extract like unzip or a file manager would; Python's own extractall drops permissions."""
+    with zipfile.ZipFile(archive) as zip_file:
+        roots = set()
+        for entry in zip_file.infolist():
+            parts = pathlib.PurePosixPath(entry.filename).parts
+            assert '..' not in parts and not pathlib.PurePosixPath(entry.filename).is_absolute()
+            roots.add(parts[0])
+            path = pathlib.Path(zip_file.extract(entry, destination))
+            mode = entry.external_attr >> 16
+            if keep_modes and mode and not entry.is_dir():
+                path.chmod(mode & 0o777)
+    assert len(roots) == 1, roots
+    return destination / roots.pop()
 
 
 class PackageTests(unittest.TestCase):
@@ -37,13 +53,7 @@ class PackageTests(unittest.TestCase):
             obs_version='32.2.2', app_commit='a' * 64, files=files,
             ffmpeg_abi=dict(avformat=62, avcodec=62, avutil=60))))
         self.archive = package_scripts(self.payload, self.root / 'out')
-        self.package = self.root / 'extracted'
-        self.package.mkdir()
-        with tarfile.open(self.archive) as tar:
-            for entry in tar:
-                self.assertNotIn('..', pathlib.PurePosixPath(entry.name).parts)
-                self.assertTrue(entry.isfile() or entry.isdir())
-            tar.extractall(self.package)
+        self.package = extract(self.archive, self.root / 'extracted')
         self.home = self.root / 'home'
         self.home.mkdir()
         self.config = self.home / '.var/app/com.obsproject.Studio/config/obs-studio'
@@ -94,13 +104,23 @@ esac
         return result
 
     def test_archive_contract_and_modes(self):
-        with tarfile.open(self.archive) as tar:
-            roots = {pathlib.PurePosixPath(e.name).parts[0] for e in tar}
-            self.assertEqual(roots, {'install.sh', 'uninstall.sh', 'README.txt', 'PluginFiles'})
+        self.assertEqual(self.archive.suffix, '.zip')
+        self.assertEqual(self.package.name, self.archive.name.removesuffix('.zip'))
+        self.assertEqual({p.name for p in self.package.iterdir()}, {'install.sh', 'uninstall.sh', 'README.txt', 'PluginFiles'})
+        with zipfile.ZipFile(self.archive) as zip_file:
             for name in ('install.sh', 'uninstall.sh', 'PluginFiles/payload/obs-multi-replay/data/multi-replay-writer'):
-                self.assertTrue(tar.getmember(name).mode & 0o111)
+                entry = zip_file.getinfo(f'{self.package.name}/{name}')
+                self.assertTrue((entry.external_attr >> 16) & 0o111)
                 if name.endswith('.sh'):
-                    self.assertNotIn(b'\r', tar.extractfile(name).read())
+                    self.assertNotIn(b'\r', zip_file.read(entry))
+
+    def test_extractor_without_permissions_still_installs(self):
+        package = extract(self.archive, self.root / 'no-modes', keep_modes=False)
+        writer = package / 'PluginFiles/payload/obs-multi-replay/data/multi-replay-writer'
+        self.assertFalse(os.access(writer, os.X_OK))
+        self.package = package
+        self.assertIn('Update', self.run_script().stdout)
+        self.assertTrue(os.access(self.target / 'data/multi-replay-writer', os.X_OK))
 
     def test_install_update_repair_and_logs(self):
         self.assertIn('Update', self.run_script().stdout)
@@ -157,52 +177,6 @@ esac
         self.assertIn('without sudo', self.run_script(expected=1, SUDO_USER='test').stderr)
         self.assertTrue((self.target / 'legacy.txt').exists())
 
-    def run_bundle(self, *arguments, expected=0, answer='', path=None, **environment):
-        path = path or self.archive.with_name(self.archive.name.removesuffix('.tar.gz') + '.run')
-        result = subprocess.run(['/bin/sh', str(path), *arguments], input=answer, text=True,
-                                capture_output=True, cwd=self.root, env=dict(self.env, **environment), timeout=20)
-        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
-        self.assertEqual(hashlib.sha256(self.profile.read_bytes()).hexdigest(), self.profile_hash)
-        self.assertEqual((self.other / 'keep.txt').read_text(), 'other plugin')
-        for path, data in self.preserved.items():
-            self.assertEqual(path.read_bytes(), data)
-        return result
-
-    def test_single_file_install_repair_uninstall_and_persistent_logs(self):
-        self.assertIn('Update', self.run_bundle('--non-interactive').stdout)
-        self.assertIn('Repair', self.run_bundle('--non-interactive').stdout)
-        self.run_bundle('--uninstall', '--non-interactive')
-        self.run_bundle('--uninstall', '--non-interactive')
-        self.assertFalse(self.target.exists())
-        self.assertEqual(len(list((self.home / '.local/state/obs-multi-replay/logs').glob('*.log'))), 4)
-
-    def test_single_file_prompt_retains_stdin_and_cancel_is_safe(self):
-        self.assertIn('Cancelled', self.run_bundle(answer='n\n').stdout)
-        self.assertTrue((self.target / 'legacy.txt').exists())
-        self.assertIn('Complete', self.run_bundle(answer='y\n').stdout)
-
-    def test_single_file_corruption_refused_before_plugin_change(self):
-        path = self.archive.with_name(self.archive.name.removesuffix('.tar.gz') + '.run')
-        with path.open('ab') as stream:
-            stream.write(b'damage')
-        self.assertIn('damaged', self.run_bundle('--non-interactive', expected=1).stderr)
-        self.assertTrue((self.target / 'legacy.txt').exists())
-
-    def test_single_file_mismatch_and_sudo_refused(self):
-        self.assertIn('Installed commit', self.run_bundle('--non-interactive', expected=1, FAKE_COMMIT='b' * 64).stderr)
-        self.assertIn('without sudo', self.run_bundle('--non-interactive', expected=1, SUDO_USER='test').stderr)
-        self.assertTrue((self.target / 'legacy.txt').exists())
-
-    def test_single_file_refuses_unsafe_archive(self):
-        from package_linux import package_run
-        malicious = self.root / 'unsafe.tar.gz'
-        with tarfile.open(malicious, 'w:gz') as archive:
-            entry = tarfile.TarInfo('../escape')
-            archive.addfile(entry)
-        self.assertIn('Unsafe', self.run_bundle('--non-interactive', expected=1, path=package_run(malicious)).stderr)
-        self.assertFalse((self.root / 'escape').exists())
-        self.assertTrue((self.target / 'legacy.txt').exists())
-
 
 def check_production_archive(path):
     # Validate the actual build, then run its launchers with isolated user files.
@@ -212,10 +186,7 @@ def check_production_archive(path):
     release.validate_archive(path)
     with tempfile.TemporaryDirectory(prefix="Replay production's [package] ") as directory:
         root = pathlib.Path(directory)
-        extracted = root / 'extracted'
-        extracted.mkdir()
-        with tarfile.open(path) as archive:
-            archive.extractall(extracted)
+        extracted = extract(path, root / 'extracted')
         home = root / 'home'
         home.mkdir()
         config = home / '.var/app/com.obsproject.Studio/config/obs-studio'
@@ -243,15 +214,9 @@ def check_production_archive(path):
         run('uninstall.sh')
         run('uninstall.sh')
         assert not target.exists()
-        bundle = path.with_name(path.name.removesuffix('.tar.gz') + '.run')
-        for arguments in ([], [], ['--uninstall'], ['--uninstall']):
-            subprocess.run(['/bin/sh', str(bundle), '--non-interactive', *arguments], env=env, check=True, timeout=60)
-            assert profile.read_bytes() == original
-            assert other.read_text() == 'preserve'
         assert not target.exists()
-        assert len(list((home / '.local/state/obs-multi-replay/logs').glob('*.log'))) == 4
         assert {p.name for p in extracted.iterdir()} == {'install.sh', 'uninstall.sh', 'README.txt', 'PluginFiles'}
-        print('PASS: production tar and single-file installers, install/repair/removal, real Flatpak compatibility, payload hashes and isolated configuration')
+        print('PASS: production ZIP installer, install/repair/removal, real Flatpak compatibility, payload hashes and isolated configuration')
 
 
 if __name__ == '__main__':

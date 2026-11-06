@@ -14,8 +14,8 @@ The [Native builds workflow](https://github.com/DinoRex4848/OBS-Multi-Replay-Buf
 
 - **Fedora 44:** compiles the plugin and writer against Fedora's OBS packages and runs all CTest tests ([list](DEVELOPMENT.md#automated-tests)), including a real remux through the writer. Also runs the Linux installer transaction and extracted-package tests.
 - **Windows (MSVC, OBS 32.1.1 SDK):** compiles, runs the portable CTest tests and the PowerShell installer fixtures, then builds the release ZIP. The ZIP's `install.bat`/`uninstall.bat` are tested against the official checksum-pinned OBS 32.1.1 runtime: install, update, repair, removal, portable relocation, damaged payloads, concurrency, dependency loading of the installed DLL and writer, and an isolated OBS startup with the plugin.
-- **Ubuntu 22.04 with the pinned Flatpak OBS 32.2.2:** builds the production plugin in the matching SDK, then installs, repairs and removes it with both the `.run` and the `.tar.gz` using isolated user files. Finally it loads and closes production OBS with an isolated configuration, checking that the normal configuration is unchanged.
-- **Release gates:** a version tag must match CMake. Draft releases require the Windows ZIP, both Linux formats, matching checksums and notices, and the `.run` must embed exactly the validated archive.
+- **Ubuntu 22.04 with the pinned Flatpak OBS 32.2.2:** builds the production plugin in the matching SDK, then installs, repairs and removes it with the extracted Linux ZIP using isolated user files. Finally it loads and closes production OBS with an isolated configuration, checking that the normal configuration is unchanged.
+- **Release gates:** a version tag must match CMake. Draft releases require the Windows ZIP and the Linux ZIP (all files in one folder, scripts executable), with matching checksums and notices.
 
 Hosted CI does not exercise real capture with GPU encoders, desktop hotkeys, interactive UAC or real drives.
 
@@ -29,6 +29,8 @@ Hosted CI does not exercise real capture with GPU encoders, desktop hotkeys, int
 - the encoder reset warning.
 
 Configurable presets (one to eight) add the `presets` and `presets-restore` scenarios, which passed on 2026-11-06 with the same setup. They check that a new profile starts with two presets, that **+** stops at eight, and that removing preset 3 moves the later names, lengths, folders and hotkey bindings up. They also check that unapplied window edits survive, that presets lock while buffering, that the last preset saves to its own folder, and that everything is restored after a restart. With that change, every earlier scenario above passed again; they now add a third preset first, because new profiles start with two.
+
+For 0.1.6 the `presets` and `presets-restore` scenarios also check that declining the remove confirmation keeps the preset, that all ten plugin hotkeys are listed together and in order before OBS's own (with only missing presets marked "(no preset)") before and after adding, removing and restarting, and that **Open OBS Hotkeys…** opens OBS Settings on the Hotkeys page. These, `settings`, `layout` and `restore` passed on 2026-11-06 in Flatpak OBS 32.2.2. The confirmation question itself is replaced by the test driver, so it was not clicked in these runs.
 
 The `shared` and `folders` scenarios need the Advanced NVENC template, as the next section explains.
 

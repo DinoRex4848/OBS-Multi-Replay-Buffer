@@ -7,7 +7,6 @@ import pathlib
 import stat
 import subprocess
 import sys
-import tarfile
 import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -21,34 +20,33 @@ def check_tag(reference):
 
 
 def validate_archive(path):
-    windows = path.suffix == ".zip"
+    """Windows ZIPs hold the files at the top; Linux ZIPs hold them in one folder named like the ZIP."""
+    windows = "-windows-" in path.name
     scripts = ("install.bat", "uninstall.bat") if windows else ("install.sh", "uninstall.sh")
     expected = {*scripts, "README.txt", "PluginFiles"}
+    folder = "" if windows else path.name.removesuffix(".zip") + "/"
     content = {}
     names = set()
-    if windows:
-        with zipfile.ZipFile(path) as archive:
-            for entry in archive.infolist():
-                name = entry.filename.replace("\\", "/").rstrip("/")
-                names.add(name)
-                if stat.S_ISLNK(entry.external_attr >> 16):
-                    raise RuntimeError("Links are not allowed in release archives")
-                if not entry.filename.replace("\\", "/").endswith("/"):
-                    if name in content:
-                        raise RuntimeError("Duplicate archive path")
-                    content[name] = archive.read(entry)
-    else:
-        with tarfile.open(path, "r:gz") as archive:
-            for entry in archive:
-                names.add(entry.name.rstrip("/"))
-                if not (entry.isfile() or entry.isdir()):
-                    raise RuntimeError("Links/special files are not allowed in release archives")
-                if entry.isfile():
-                    if entry.name in content:
-                        raise RuntimeError("Duplicate archive path")
-                    content[entry.name] = archive.extractfile(entry).read()
-                    if (entry.name in scripts or entry.name.endswith("/multi-replay-writer")) and not entry.mode & 0o111:
-                        raise RuntimeError("Linux executable permission is missing")
+    with zipfile.ZipFile(path) as archive:
+        for entry in archive.infolist():
+            raw = entry.filename.replace("\\", "/")
+            if stat.S_ISLNK(entry.external_attr >> 16):
+                raise RuntimeError("Links are not allowed in release archives")
+            if folder:
+                if raw.rstrip("/") + "/" == folder:
+                    continue
+                if not raw.startswith(folder):
+                    raise RuntimeError("Linux archive files must be inside one folder named like the archive")
+                raw = raw[len(folder):]
+            name = raw.rstrip("/")
+            names.add(name)
+            if not raw.endswith("/"):
+                if name in content:
+                    raise RuntimeError("Duplicate archive path")
+                content[name] = archive.read(entry)
+                if (not windows and (name in scripts or name.endswith("/multi-replay-writer"))
+                        and not (entry.external_attr >> 16) & 0o111):
+                    raise RuntimeError("Linux executable permission is missing")
     for name in names:
         parts = pathlib.PurePosixPath(name)
         if parts.is_absolute() or ".." in parts.parts or ":" in name:
@@ -83,8 +81,7 @@ def validate_archive(path):
 
 def prepare(directory):
     required = [f"obs-multi-replay-{version()}-windows-x64.zip",
-                f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz",
-                f"obs-multi-replay-{version()}-linux-flatpak-x86_64.run"]
+                f"obs-multi-replay-{version()}-linux-flatpak-x86_64.zip"]
     lines = []
     files = []
     for name in required:
@@ -93,14 +90,7 @@ def prepare(directory):
         checksum = path.with_name(name + ".sha256")
         if checksum.read_text(encoding="utf-8-sig").strip().lower() != f"{digest}  {name}".lower():
             raise RuntimeError(f"Checksum mismatch: {name}")
-        if name.endswith(".run"):
-            header, marker, payload = path.read_bytes().partition(b"\n__REPLAY_ARCHIVE_BELOW__\n")
-            archive = directory / f"obs-multi-replay-{version()}-linux-flatpak-x86_64.tar.gz"
-            if (not marker or not header.startswith(b"#!/bin/sh\n") or payload != archive.read_bytes()
-                    or hashlib.sha256(payload).hexdigest().encode() not in header):
-                raise RuntimeError("Single-file Linux installer differs from the validated archive")
-        else:
-            validate_archive(path)
+        validate_archive(path)
         lines.append(f"{digest}  {name}\n")
         files.extend((path, checksum))
     for name in ("linux-installer-notices.txt", "windows-installer-notices.txt", "linux-build.json"):
@@ -116,15 +106,15 @@ def prepare(directory):
     metadata = json.loads((directory / "linux-build.json").read_text())
     body = directory / "release-notes.txt"
     body.write_text(f"Experimental OBS Multi-Length Replay {version()}\n\n"
-                    "Download the installer for your OBS installation type. Rerun it to update or repair; "
+                    "Download the ZIP for your system and extract it. Rerun its installer to update or repair; "
                     "settings, hotkeys and recordings are preserved. Close OBS before installation or removal.\n\n"
                     "Windows: x64 OBS 32.1 or newer; standard and portable installations. "
                     "Extract the entire ZIP, then double-click install.bat; choose Normal (default) or Portable OBS. "
                     "Run uninstall.bat for removal. Administrator access is requested only when needed. "
                     "Built-in Windows PowerShell is used.\n\n"
                     f"Linux: Flatpak OBS {metadata['obs_version']} x86_64, commit `{metadata['app_commit']}`. "
-                    f"Python 3.10+ and Flatpak are required. Run `sh ./obs-multi-replay-{version()}-linux-flatpak-x86_64.run`, "
-                    "without sudo; add `--uninstall` for removal. The tar archive is an alternative extracted package. "
+                    "Python 3.10+ and Flatpak are required. Extract the entire ZIP, open a terminal in the extracted folder "
+                    "and run `sh ./install.sh` without sudo. Run `sh ./uninstall.sh` for removal. "
                     "Other OBS commits require a matching installer. Native RPM/deb OBS is not targeted.\n\n"
                     "Review docs/INSTALLERS.md and docs/VALIDATION.md for acceptance results and remaining manual checks.\n")
     return files, body

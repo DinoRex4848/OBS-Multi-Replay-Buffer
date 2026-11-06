@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Package a Flatpak OBS build as the offline Linux installers (.tar.gz and single-file .run).
+"""Package a Flatpak OBS build as the offline Linux installer ZIP.
+
+The ZIP extracts to one folder holding install.sh, uninstall.sh, README.txt and PluginFiles.
 
   package_linux.py --build build-flatpak --metadata-only   record the Flatpak SDK/app facts of a build
-  package_linux.py --build build-flatpak                    create dist/ payload, archive and .run
+  package_linux.py --build build-flatpak                    create dist/ payload and installer ZIP
 """
 import argparse
 import hashlib
 import json
 import pathlib
 import re
-import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
+import zipfile
 
 import project
 from project import FFMPEG_ABI, FLATPAK_APP, REPO
@@ -96,52 +97,41 @@ def package_payload(build):
     return payload
 
 
-def package_run(archive):
-    """One offline download; stdin stays connected to the confirmation prompt."""
-    bootstrap = (REPO / "packaging/linux/bootstrap.py").read_text()
-    payload = archive.read_bytes()
-    header = ("#!/bin/sh\n"
-              "if ! command -v python3 >/dev/null 2>&1; then\n"
-              "  echo 'ERROR: Python 3.10+ is required. Install it using your distribution package manager.' >&2\n"
-              "  exit 1\nfi\n"
-              "if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then\n"
-              "  echo 'ERROR: Python 3.10+ is required; your python3 is too old.' >&2\n"
-              "  exit 1\nfi\n"
-              f"python3 -c {shlex.quote(bootstrap)} \"$0\" {hashlib.sha256(payload).hexdigest()} \"$@\"\n"
-              "exit $?\n__REPLAY_ARCHIVE_BELOW__\n").encode()
-    installer = archive.with_name(archive.name.removesuffix(".tar.gz") + ".run")
-    installer.write_bytes(header + payload)
-    installer.chmod(0o755)
-    write_checksum(installer)
-    return installer
+def write_zip(stage, archive, folder):
+    """Zip `stage` under one top-level `folder`, keeping Unix permissions for unzip tools that honor them."""
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.write(stage, folder)
+        for path in sorted(stage.rglob("*")):
+            zip_file.write(path, f"{folder}/{path.relative_to(stage).as_posix()}")
 
 
 def package_scripts(payload, output):
-    """Create the four-entry .tar.gz (install.sh, uninstall.sh, README.txt, PluginFiles) and the .run."""
+    """Create the installer ZIP: one folder with install.sh, uninstall.sh, README.txt and PluginFiles."""
     details = core.verify_package(payload)
     version = project.version()
     if details["plugin_version"] != version:
         raise RuntimeError("Payload version does not match CMake; rebuild first")
+    name = f"{project.PLUGIN}-{version}-linux-flatpak-x86_64"
     stage = output / "linux-installer"
     if stage.exists():
         shutil.rmtree(stage)
     private = stage / "PluginFiles"
     private.mkdir(parents=True)
     shutil.copytree(payload, private / "payload" / project.PLUGIN)
-    for name in ("replay_installer.py", "installer.py"):
-        shutil.copy2(REPO / "packaging/linux" / name, private / name)
-    for name in ("install.sh", "uninstall.sh", "README.txt"):
-        shutil.copy2(REPO / "packaging/linux" / name, stage / name)
-    for name in ("install.sh", "uninstall.sh"):
-        (stage / name).chmod(0o755)
-    archive = output / f"{project.PLUGIN}-{version}-linux-flatpak-x86_64.tar.gz"
-    with tarfile.open(archive, "w:gz") as tar:
-        for entry in sorted(stage.iterdir()):
-            tar.add(entry, arcname=entry.name)
+    for script in ("replay_installer.py", "installer.py"):
+        shutil.copy2(REPO / "packaging/linux" / script, private / script)
+    for script in ("install.sh", "uninstall.sh", "README.txt"):
+        shutil.copy2(REPO / "packaging/linux" / script, stage / script)
+    for script in ("install.sh", "uninstall.sh"):
+        (stage / script).chmod(0o755)
+    # Earlier releases also produced these; remove stale copies so they are not uploaded.
+    for old in (f"{name}.tar.gz", f"{name}.tar.gz.sha256", f"{name}.run", f"{name}.run.sha256"):
+        (output / old).unlink(missing_ok=True)
+    archive = output / f"{name}.zip"
+    write_zip(stage, archive, name)
     write_checksum(archive)
     (output / "linux-build.json").write_text(json.dumps({k: v for k, v in details.items() if k != "files"}, indent=2) + "\n")
     (output / "linux-installer-notices.txt").write_text((REPO / "LICENSE").read_text() + "\n" + (REPO / "docs/THIRD_PARTY.md").read_text())
-    package_run(archive)
     return archive
 
 

@@ -7,7 +7,7 @@ see [validation](VALIDATION.md) before sharing.
 
 ## Windows 10/11 x64
 
-Download **`obs-multi-replay-0.1.5-windows-x64.zip`** and extract the **entire ZIP**
+Download **`obs-multi-replay-0.1.6-windows-x64.zip`** and extract the **entire ZIP**
 into a writable folder. It contains only `install.bat`, `uninstall.bat`, `README.txt`
 and `PluginFiles/`. Double-click **install.bat** and:
 
@@ -56,22 +56,24 @@ uninstaller. Unfamiliar files are retained and reported.
 
 ## Linux x86_64: Flatpak OBS
 
-Download **`obs-multi-replay-0.1.5-linux-flatpak-x86_64.run`**, open a terminal in
-the download folder, and run:
+Download **`obs-multi-replay-0.1.6-linux-flatpak-x86_64.zip`** and extract the
+**entire ZIP**. It extracts to one folder, `obs-multi-replay-0.1.6-linux-flatpak-x86_64`,
+containing only `install.sh`, `uninstall.sh`, `README.txt` and `PluginFiles/`.
+Open a terminal in that folder and run:
 
 ```sh
-sh ./obs-multi-replay-0.1.5-linux-flatpak-x86_64.run
+sh ./install.sh
 # Update or repair: run the same command again.
 # Remove only the plugin:
-sh ./obs-multi-replay-0.1.5-linux-flatpak-x86_64.run --uninstall
+sh ./uninstall.sh
 ```
 
 Run as your desktop user, **without sudo**. Requirements are Python 3.10+, Flatpak,
-and the matching x86_64 OBS Flatpak. The installer checks its embedded archive,
-extracts it temporarily, shows the action/destination, and asks for confirmation.
-It downloads nothing, changes no Flatpak permissions, and installs no host packages.
-Logs persist in `${XDG_STATE_HOME:-~/.local/state}/obs-multi-replay/logs`.
-Add `--non-interactive` for automation. Use `--help` for the short command summary.
+and the matching x86_64 OBS Flatpak. The installer checks the package's hashes,
+shows the action/destination, and asks for confirmation. It downloads nothing,
+changes no Flatpak permissions, and installs no host packages. Logs are in
+`PluginFiles/Logs`. Add `--non-interactive` for automation. Keep the folder for
+removal, or use a newer package's `uninstall.sh`.
 
 The supported binary target is **Flatpak OBS 32.2.2**, exact commit
 `21b35765922fb5c8b92ccdccedc0d8ca709b12f86a961780350199082da822ef`, using its
@@ -85,10 +87,6 @@ The destination is
 `~/.var/app/com.obsproject.Studio/config/obs-studio/plugins/obs-multi-replay`.
 Plugin backups remain under `replay-plugin-backups` beside `plugins`.
 No settings migration is performed.
-
-The `.tar.gz` is an alternative: extract it entirely into a writable folder and
-run `sh ./install.sh` or `sh ./uninstall.sh`. Its logs stay in `PluginFiles/Logs`.
-Both Linux downloads use the same verified payload and transaction engine.
 
 ## Linux native RPM/deb OBS
 

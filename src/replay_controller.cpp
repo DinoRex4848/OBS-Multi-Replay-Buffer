@@ -5,11 +5,15 @@
 #include "settings_dialog.hpp"
 #include "status_text.hpp"
 #include "ui_util.hpp"
+#include <obs-frontend-api.h>
 #include <QAction>
+#include <QApplication>
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
@@ -26,6 +30,22 @@ bool sameVideoFormat(const obs_video_info &a, const obs_video_info &b)
 {
   return a.output_width == b.output_width && a.output_height == b.output_height && a.output_format == b.output_format &&
          a.colorspace == b.colorspace && a.range == b.range && a.fps_num == b.fps_num && a.fps_den == b.fps_den;
+}
+// OBS's Settings window: its main window action, dialog, page list and the Hotkeys
+// page's row (OBSBasicSettings::Pages::HOTKEYS). These are OBS's own object names.
+constexpr int obsHotkeysPage = 6;
+constexpr int obsSettingsPollMs = 50, obsSettingsWaitMs = 5000;
+QAction *obsSettingsAction()
+{
+  auto *main = static_cast<QWidget *>(obs_frontend_get_main_window());
+  return main ? main->findChild<QAction *>("action_Settings") : nullptr;
+}
+QListWidget *obsSettingsPages()
+{
+  for (auto *widget : QApplication::topLevelWidgets())
+    if (widget->objectName() == "OBSBasicSettings" && widget->isVisible())
+      return widget->findChild<QListWidget *>("listWidget");
+  return nullptr;
 }
 } // namespace
 
@@ -49,10 +69,16 @@ ReplayController::ReplayController(QWidget *mainWindow) : QObject(mainWindow)
   // Preset edits save immediately; settings window edits wait for Apply/OK.
   dock_->onSave = [this](int preset) { saveReplay(preset, clockNow()); };
   dock_->onAdd = [this] { addPreset(); };
-  dock_->onRemove = [this](int preset) { removePreset(preset); };
+  confirmRemove_ = [this](int preset) { return confirmRemovePreset(preset); };
+  dock_->onRemove = [this](int preset) {
+    // removePreset checks again: buffering can start while the question is open.
+    if (presetsEditable() && confirmRemove_(preset)) removePreset(preset);
+  };
   dock_->onEdited = [this] { saveSettings(); };
   dialog_->onPresetFolderEdited = [this] { updateSettingsState(); };
   connect(dock_->settingsShortcut, &QPushButton::clicked, this, [this] { showSettings(); });
+  connect(dialog_->hotkeysButton, &QPushButton::clicked, this, [this] { openObsHotkeys(); });
+  if (!obsSettingsAction()) dialog_->hotkeysButton->hide(); // An OBS build without the usual Settings action.
   hotkeys_ = std::make_unique<Hotkeys>([this](HotkeyAction action, Time pressed) { onHotkey(action, pressed); });
   loadSettings();
   connect(dialog_->budget, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this] { updateSettingsState(); });
@@ -94,6 +120,28 @@ void ReplayController::showSettings()
   dialog_->show();
   dialog_->raise();
   dialog_->activateWindow();
+}
+
+// OBS has no frontend API to open its Settings window on a page, so trigger its
+// Settings action and select the Hotkeys page once the window is open.
+void ReplayController::openObsHotkeys()
+{
+  auto *action = obsSettingsAction();
+  if (closed_ || !action) return;
+  auto *poll = new QTimer(this);
+  poll->setInterval(obsSettingsPollMs);
+  // OBS shows the window with a nested event loop, which keeps this timer running.
+  // It may also wait a second first, if another event loop is running.
+  connect(poll, &QTimer::timeout, this, [poll, tries = 0]() mutable {
+    if (auto *list = obsSettingsPages()) {
+      if (list->count() > obsHotkeysPage) list->setCurrentRow(obsHotkeysPage);
+      poll->deleteLater();
+    } else if (++tries * obsSettingsPollMs >= obsSettingsWaitMs) {
+      poll->deleteLater();
+    }
+  });
+  poll->start();
+  action->trigger();
 }
 
 ReplaySettings ReplayController::draftSettings() const { return dialog_->draft(); }
@@ -181,6 +229,18 @@ void ReplayController::addPreset()
   loading_ = false;
   saveSettings();
   refresh();
+}
+bool ReplayController::confirmRemovePreset(int index)
+{
+  if (index < 0 || index >= dock_->presetCount()) return false;
+  const auto &row = dock_->rows[size_t(index)];
+  const auto text = QString("Remove preset %1, \"%2\" (%3 s)?\n\nIts save folder and hotkey binding are removed too. "
+                            "The presets below it move up.")
+                        .arg(index + 1)
+                        .arg(row.name->text())
+                        .arg(row.seconds->value());
+  return QMessageBox::question(dock_, "Remove Preset", text, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) ==
+         QMessageBox::Yes;
 }
 // The presets after `index` move up, taking their folders and hotkey bindings with them.
 void ReplayController::removePreset(int index)

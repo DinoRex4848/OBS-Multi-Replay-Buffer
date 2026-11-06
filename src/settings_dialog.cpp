@@ -107,6 +107,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
       "When sharing, pausing the recording also pauses replay collection (paused time is cut from replays),\n"
       "and whichever starts second begins at the encoder's next keyframe.");
   settingsLayout->addWidget(separateEncoder);
+  settingsLayout->addWidget(new QLabel("Hotkeys", settingsPage));
+  hotkeysButton = new QPushButton("Open OBS Hotkeys…", settingsPage);
+  hotkeysButton->setObjectName(ids::hotkeysButton);
+  hotkeysButton->setToolTip("Open OBS Settings on the Hotkeys page");
+  settingsLayout->addWidget(hotkeysButton, 0, Qt::AlignLeft);
 
   auto *diagnosticsLayout = new QVBoxLayout(diagnosticsPage);
   diagnosticsLayout->setContentsMargins(8, 8, 8, 8);

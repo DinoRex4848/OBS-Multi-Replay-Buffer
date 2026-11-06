@@ -17,6 +17,8 @@ elif ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)
     message="ERROR: Python 3.10 or newer is required. Your python3 is too old."
     status=1
 else
+    # Some unzip tools drop permissions; the package hashes cover contents, not modes.
+    chmod +x "$private/payload/obs-multi-replay/data/multi-replay-writer" 2>/dev/null || :
     python3 "$private/installer.py" --action install "$@"
     status=$?
 fi
