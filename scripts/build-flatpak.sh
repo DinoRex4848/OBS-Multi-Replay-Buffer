@@ -26,7 +26,7 @@ flatpak run --devel --filesystem="$repo_dir" --command=sh com.obsproject.Studio 
   export PKG_CONFIG_PATH=/app/lib/pkgconfig
   cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/app -DFFMPEG_ROOT=/app \
-    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH=/app/lib -DREPLAY_LOCAL_DEPS= \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH=/app/lib \
     -DBUILD_PLUGIN=ON -DBUILD_TESTING=ON -DREPLAY_INTEGRATION_TEST="$mode"
   cmake --build "$build_dir" --parallel
   ctest --test-dir "$build_dir" --output-on-failure
@@ -38,7 +38,7 @@ if [[ $(flatpak info --show-commit com.obsproject.Studio) != "$app_commit" ]]; t
   echo "OBS changed during the build. Run the build again against the updated app." >&2
   exit 1
 fi
-python3 "$repo_dir/scripts/package-flatpak.py" --build "$repo_dir/$build_name" --metadata-only
+python3 "$repo_dir/scripts/package_linux.py" --build "$repo_dir/$build_name" --metadata-only
 if [[ $mode == OFF ]]; then
-  python3 "$repo_dir/scripts/package-flatpak.py" --build "$repo_dir/$build_name"
+  python3 "$repo_dir/scripts/package_linux.py" --build "$repo_dir/$build_name"
 fi

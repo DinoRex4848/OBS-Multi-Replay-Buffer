@@ -84,7 +84,7 @@ the original OBS commit.
 The destination is
 `~/.var/app/com.obsproject.Studio/config/obs-studio/plugins/obs-multi-replay`.
 Plugin backups remain under `replay-plugin-backups` beside `plugins`.
-No settings migration is performed; the developer CLI retains explicit migration.
+No settings migration is performed.
 
 The `.tar.gz` is an alternative: extract it entirely into a writable folder and
 run `sh ./install.sh` or `sh ./uninstall.sh`. Its logs stay in `PluginFiles/Logs`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds, tests and packages the Fedora plugin inside a Fedora container, so the
+# Builds and tests the plugin against Fedora's OBS packages inside a container, so the
 # host needs neither development packages nor sudo. Requires rootless podman.
 # The container release defaults to the host's, so the result matches host OBS.
 #   ./scripts/build-container.sh [build-directory-name]
@@ -14,6 +14,5 @@ exec podman run --rm --security-opt label=disable -v "$repo_dir":/src \
     cmake -S /src -B /src/$build_name -G Ninja -DCMAKE_BUILD_TYPE=Release -DREPLAY_INTEGRATION_TEST=OFF
     cmake --build /src/$build_name --parallel $jobs
     ctest --test-dir /src/$build_name --output-on-failure
-    python3 /src/scripts/package-fedora.py --build /src/$build_name
     rpm -q obs-studio-devel qt6-qtbase-devel libavformat-free-devel gcc-c++
   "

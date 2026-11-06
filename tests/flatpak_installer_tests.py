@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise real installation transactions using temporary package/profile fixtures."""
+"""Exercise real installation transactions using temporary package and profile fixtures."""
 import hashlib
 import importlib.util
 import json
@@ -10,7 +10,7 @@ import shutil
 import os
 from unittest import mock
 
-spec = importlib.util.spec_from_file_location("installer", pathlib.Path(__file__).resolve().parents[1] / "scripts/replay_installer.py")
+spec = importlib.util.spec_from_file_location("installer", pathlib.Path(__file__).resolve().parents[1] / "packaging/linux/replay_installer.py")
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
@@ -37,34 +37,35 @@ class InstallTests(unittest.TestCase):
         (self.destination / "old.so").write_text("old payload")
         self.other = self.destination.parent / "unrelated.so"
         self.other.write_text("keep me")
-        self.source = self.root / "legacy/basic.ini"
-        self.source.parent.mkdir()
-        self.settings = {"share_encoder": True, "seconds0": 60, "hotkey2": [{"key": "OBS_KEY_F13"}]}
-        self.source.write_text('[Output]\nMode=Advanced\n[MultiLengthReplay]\nSettings=' + json.dumps(self.settings) + '\n')
+        # The installer never reads or writes OBS profiles; tests assert this file is untouched.
         self.target = self.root / "flatpak/Untitled/basic.ini"
         self.target.parent.mkdir(parents=True)
-        self.original = b"; preserve comments\r\n[Output]\r\nMode=Advanced\r\n[AdvOut]\r\nRecTracks=15\r\n"
+        self.original = (b"; preserve comments\r\n[Output]\r\nMode=Advanced\r\n"
+                         b'[MultiLengthReplay]\r\nSettings={"share_encoder":true}\r\n')
         self.target.write_bytes(self.original)
-        (self.target.parent / "recordEncoder.json").write_text("encoder settings")
 
     def run_install(self):
-        return installer.install(self.package, self.destination, self.root / "backups", self.source, self.target)
+        return installer.install(self.package, self.destination, self.root / "backups")
 
-    def test_update_and_section_only_migration(self):
+    def test_update_replaces_payload_and_keeps_backup(self):
         backup = self.run_install()
-        self.assertTrue(self.target.read_bytes().startswith(self.original))
-        self.assertIn(b"OBS_KEY_F13", self.target.read_bytes())
-        self.assertEqual((backup / "profile/basic.ini").read_bytes(), self.original)
         self.assertEqual((backup / "plugin/old.so").read_text(), "old payload")
         self.assertFalse((self.destination / "old.so").exists())
+        self.assertTrue((self.destination / "data/multi-replay-writer").is_file())
         self.assertEqual(self.other.read_text(), "keep me")
-        self.run_install()  # Repeated migration is idempotent.
+        self.assertEqual(self.target.read_bytes(), self.original)
+        self.run_install()  # Repairing the same version is idempotent.
 
-    def test_rollback_after_profile_publish_failure(self):
-        with mock.patch.object(installer, "atomic_write", side_effect=OSError("simulated profile write failure")):
+    def test_rollback_after_commit_failure(self):
+        original = installer.write_journal
+
+        def fail_commit(path, record):
+            if record["state"] == "committed":
+                raise OSError("simulated commit failure")
+            return original(path, record)
+        with mock.patch.object(installer, "write_journal", side_effect=fail_commit):
             with self.assertRaises(OSError):
                 self.run_install()
-        self.assertEqual(self.target.read_bytes(), self.original)
         self.assertEqual((self.destination / "old.so").read_text(), "old payload")
         self.assertEqual(self.other.read_text(), "keep me")
         self.assertFalse(list(self.destination.parent.glob(".obs-multi-replay-*")))
@@ -76,13 +77,13 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(self.target.read_bytes(), self.original)
         self.assertTrue((self.destination / "old.so").exists())
 
-    def test_existing_settings_preserved(self):
-        current = self.original + b'\n[MultiLengthReplay]\nSettings={"share_encoder":false}\n'
-        self.target.write_bytes(current)
-        with self.assertRaises(RuntimeError):
+    def test_retired_migration_journal_refused(self):
+        journal = self.destination.parent / ".obs-multi-replay-transaction.json"
+        installer.write_journal(journal, {"tag": "20261019-120000-123456ab", "state": "publishing",
+                                          "had_previous": True, "profile": str(self.target)})
+        with self.assertRaisesRegex(RuntimeError, "manual recovery"):
             self.run_install()
-        self.assertEqual(self.target.read_bytes(), current)
-        self.assertTrue((self.destination / "old.so").exists())
+        self.assertEqual((self.destination / "old.so").read_text(), "old payload")
 
     def test_ui_test_payload_refused(self):
         manifest = self.package / "manifest.json"
