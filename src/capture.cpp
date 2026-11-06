@@ -207,6 +207,7 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
     for (size_t i = 0; i < audio.size() && i < 6; ++i) primed_[i + 1] = !obs_encoder_active(audio[i]);
     session_ = sessionName();
     message_ = "Starting";
+    failed_ = false;
     needsStop_ = false;
     abortWrites_ = false;
     headersReady_ = false;
@@ -231,6 +232,7 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
     ledger_->used = 0;
     const char *error = obs_output_get_last_error(output_);
     message_ = error && *error ? error : "Replay encoder initialization failed; inspect OBS log";
+    failed_ = true;
     throw std::runtime_error(message_);
   }
 }
@@ -245,6 +247,7 @@ bool Capture::begin(obs_output_t *output)
     lastPoll_ = 0;
     lastWall_ = 0;
     message_ = "Buffering";
+    failed_ = false;
     if (options_.shared)
       blog(LOG_INFO,
            "[multi-replay] Session %s: SHARING the OBS recording's %s encoder '%s', %zu audio tracks; no additional "
@@ -298,6 +301,7 @@ void Capture::failCapture(std::string error)
   collecting_ = false;
   needsStop_ = true;
   message_ = std::move(error);
+  failed_ = true;
   blog(LOG_ERROR, "[multi-replay] %s", message_.c_str());
   condition_.notify_all();
 }
@@ -532,8 +536,13 @@ Status Capture::status() const
   s.queued = pending_.size() + ready_.size() + size_t(writing_);
   s.message = message_;
   s.active = active_;
-  s.results = results_;
+  s.failed = failed_;
   return s;
+}
+std::vector<Result> Capture::recentResults() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return results_;
 }
 std::vector<Result> Capture::takeCompleted()
 {

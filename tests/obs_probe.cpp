@@ -253,10 +253,11 @@ int main(int argc, char **argv)
         obs_output_release(second);
         capture.shutdown();
         auto status = capture.status();
-        if (status.results.size() != 6 || status.memory != 0)
+        const auto results = capture.recentResults();
+        if (results.size() != 6 || status.memory != 0)
           throw std::runtime_error("Drain lost requests or retained memory");
-        for (size_t i = 0; i < status.results.size(); ++i) {
-          auto &saved = status.results[i];
+        for (size_t i = 0; i < results.size(); ++i) {
+          auto &saved = results[i];
           if (!saved.error.empty()) throw std::runtime_error(saved.error);
           // The save made during the pause ends at the last packet libobs released
           // before pausing, which is earlier than the request.
@@ -294,11 +295,11 @@ int main(int argc, char **argv)
         sleepPoll(capture, 1000);
         capture.stop();
         for (int i = 0; i < 500 && capture.status().draining; ++i) sleepPoll(capture, 20);
-        auto first = capture.status();
-        if (first.results.size() != 5) throw std::runtime_error("Accepted request count changed");
-        for (auto &saved : first.results)
+        const auto first = capture.recentResults();
+        if (first.size() != 5) throw std::runtime_error("Accepted request count changed");
+        for (auto &saved : first)
           if (!saved.error.empty()) throw std::runtime_error(saved.error);
-        if (first.results[1].endpoint != firstEndpoint) throw std::runtime_error("Request endpoint shifted");
+        if (first[1].endpoint != firstEndpoint) throw std::runtime_error("Request endpoint shifted");
         if (!obs_output_active(normalOutput)) throw std::runtime_error("Stopping replay stopped ordinary recording");
         capture.start(options, video, replayAudio); // Recording already running.
         sleepPoll(capture, 2500);
@@ -338,20 +339,21 @@ int main(int argc, char **argv)
             throw std::runtime_error("Saving under memory pressure stopped collection: " + capture.status().message);
           capture.stop();
           for (int i = 0; i < 500 && capture.status().draining; ++i) sleepPoll(capture, 20);
-          if (capture.status().results.back().partial != "memory pressure")
+          if (capture.recentResults().back().partial != "memory pressure")
             throw std::runtime_error("Pressure-shortened replay was not marked partial");
         }
         capture.shutdown();
         auto status = capture.status();
-        if (status.results.size() != size_t(longRun ? 11 : pressureRun ? 9 : 8) || status.memory != 0)
+        const auto results = capture.recentResults();
+        if (results.size() != size_t(longRun ? 11 : pressureRun ? 9 : 8) || status.memory != 0)
           throw std::runtime_error("Drain lost requests or retained memory");
         if (longRun)
           for (size_t i = 8; i < 11; ++i) {
-            auto &saved = status.results[i];
+            auto &saved = results[i];
             if (!saved.partial.empty() || saved.actual < saved.requested || saved.actual > saved.requested + 2500000)
               throw std::runtime_error("Long replay duration/keyframe guarantee failed");
           }
-        for (auto &saved : status.results) {
+        for (auto &saved : results) {
           if (!saved.error.empty()) throw std::runtime_error(saved.error);
           if (saved.partial.find("settled") == std::string::npos &&
               saved.partial.find("timeout") == std::string::npos && std::abs(saved.mediaEnd - saved.endpoint) > 100000)

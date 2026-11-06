@@ -1,6 +1,6 @@
 #pragma once
 #include "history.hpp"
-#include "mux.hpp"
+#include "writer_process.hpp"
 #include "naming.hpp"
 #include <obs-module.h>
 #include <array>
@@ -34,7 +34,7 @@ struct Status {
   uint64_t memory = 0, budget = 0;
   size_t queued = 0;
   std::string message, active;
-  std::vector<Result> results;
+  bool failed = false; // `message` describes a capture failure rather than a state.
 };
 class Capture {
 public:
@@ -56,8 +56,10 @@ public:
   // Returns the completion request ID. A nonempty destination overrides this request's folder.
   uint64_t save(Time duration, Time endpoint, const std::filesystem::path &destination = {});
   Status status() const;
-  // Drain notifications independently of the bounded recent-results snapshot.
+  // Results completed since the last call, in completion order.
   std::vector<Result> takeCompleted();
+  // The last 20 results, kept for diagnostics and tests.
+  std::vector<Result> recentResults() const;
   void poll();
   // Output callbacks, public only for libobs's C ABI.
   bool begin(obs_output_t *);
@@ -107,6 +109,7 @@ private:
   Time lastPoll_ = 0, lastWall_ = 0;
   uint64_t sequence_ = 0;
   std::string session_, message_, active_;
+  bool failed_ = false; // message_ is a failure, not a state name.
   obs_output_t *output_ = nullptr;
 };
 }
