@@ -82,4 +82,4 @@ OBS Multi Replay Buffer is licensed under [GNU GPL v2.0 or later](LICENSE). Depe
 
 ## AI assistance
 
-OBS Multi Replay Buffer was made with substantial assistance from ChatGPT and OpenAI Codex, including help writing and debugging code, developing tests, and preparing documentation. I'm still learning to code, and I want to be transparent that this project reflects that collaboration.
+OBS Multi Replay Buffer was made with substantial assistance from Claude and Claude Code, including help writing and debugging code, developing tests, and preparing documentation. I'm still learning to code, and I want to be transparent that this project reflects that collaboration.
