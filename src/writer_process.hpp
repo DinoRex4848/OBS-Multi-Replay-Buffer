@@ -1,8 +1,13 @@
 #pragma once
 #include "history.hpp"
+#include <array>
 #include <filesystem>
 
 namespace replay {
+// Codecs the writer can mux; the replay output accepts only these.
+inline constexpr std::array<const char *, 3> videoCodecs = {"h264", "hevc", "av1"};
+inline constexpr std::array<const char *, 6> audioCodecs = {"aac", "flac", "opus", "pcm_s16le", "pcm_s24le", "pcm_f32le"};
+
 struct Stream {
   std::string codec, name;
   std::vector<uint8_t> extra;
@@ -22,6 +27,4 @@ void setWriterPath(std::filesystem::path);
 // stalled drive without hanging OBS's capture, UI or shutdown threads.
 MuxResult writeMkv(const Format &, Selection &, const std::filesystem::path &folder, const std::string &stem,
                    std::function<void()> progress = {}, bool allowSpaces = true);
-// Used by the plugin's --multi-replay-writer helper mode / native helper.
-int writerMain(int argc, char **argv);
 }

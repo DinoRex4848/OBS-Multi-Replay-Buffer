@@ -1,4 +1,5 @@
 #pragma once
+#include "constants.hpp"
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -8,19 +9,20 @@
 #include <vector>
 
 namespace replay {
-using Time = int64_t; // Monotonic system timeline, microseconds.
 struct Ledger {
   std::atomic<uint64_t> used{0};
-  uint64_t limit = 6000000000ULL;
+  uint64_t limit = defaultBudgetBytes;
 };
 // Includes allocation, packet, reference-control-block and index headroom.
 constexpr uint64_t packetOverhead = 512;
 constexpr uint64_t jobOverhead = 4096;
 constexpr uint64_t refOverhead = 32;
 constexpr uint64_t writerReserve = 32 * 1024 * 1024;
-constexpr Time settleWindow = 500000;
+// Video packets this far past a request's end are still collected, so frames shown
+// before the end but decoded after it are included.
+constexpr Time settleWindow = microsecondsPerSecond / 2;
 // Room kept free when a save is accepted, for packets that arrive before the writer releases pins.
-constexpr Time settleReserve = 3000000;
+constexpr Time settleReserve = fromSeconds(3);
 struct Packet {
   std::shared_ptr<void> owner;
   const uint8_t *data = nullptr;

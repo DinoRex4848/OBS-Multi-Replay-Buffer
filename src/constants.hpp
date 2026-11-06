@@ -6,6 +6,10 @@ using Time = int64_t; // Monotonic system timeline, microseconds.
 constexpr Time microsecondsPerSecond = 1000000;
 constexpr Time fromSeconds(int64_t seconds) { return seconds * microsecondsPerSecond; }
 
+// Streams in a replay: one video track plus up to six OBS audio tracks.
+constexpr int maxAudioTracks = 6;
+constexpr int maxStreams = 1 + maxAudioTracks;
+
 // Replay presets shown in the dock. Settings keys and hotkeys are numbered by preset.
 constexpr int presetCount = 3;
 constexpr int defaultPresetSeconds[presetCount] = {60, 240, 600};

@@ -21,10 +21,16 @@ struct Encoders {
   Encoders(Encoders &&) noexcept;
   Encoders &operator=(Encoders &&) noexcept;
   Encoders(const Encoders &) = delete;
+
+private:
+  void release();
 };
 bool encoderAvailable(const std::string &id);
+// Encoders matching the current profile's recording settings: the frontend's own
+// when `share` is set and possible, otherwise new independent ones.
 Encoders recordingEncoders(bool share = false);
 // New reference to the video encoder the frontend would record with now, or null.
 obs_encoder_t *frontendRecordingVideo();
+// Text identifying the profile's recording settings; changes when they change.
 std::string recordingFingerprint();
 }

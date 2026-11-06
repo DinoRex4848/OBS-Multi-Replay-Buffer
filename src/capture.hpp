@@ -12,8 +12,8 @@ namespace replay {
 Time clockNow();
 void registerReplayOutput();
 struct Options {
-  uint64_t budget = 6000000000ULL;
-  Time longest = 600000000;
+  uint64_t budget = defaultBudgetBytes;
+  Time longest = fromSeconds(defaultPresetSeconds[presetCount - 1]);
   std::filesystem::path folder;
   FilenameOptions filenames;
   // The encoders belong to the OBS frontend's recording output. Pausing that
@@ -25,13 +25,13 @@ struct Result {
   std::filesystem::path path;
   std::string error, partial;
   Time requested = 0, actual = 0, endpoint = 0;
-  Time mediaStart = 0, mediaEnd = 0;
+  Time mediaEnd = 0;
   uint64_t id = 0; // Completion identity, never included in the filename.
 };
 struct Status {
-  bool collecting = false, draining = false, degraded = false, needsStop = false, shared = false, paused = false;
+  bool collecting = false, draining = false, degraded = false, shared = false, paused = false;
   Time available = 0;
-  uint64_t memory = 0, budget = 0;
+  uint64_t memory = 0;
   size_t queued = 0;
   std::string message, active;
   bool failed = false; // `message` describes a capture failure rather than a state.
@@ -79,11 +79,14 @@ private:
     bool allowSpaces = true;
   };
   void worker();
+  // These four require mutex_ to be held.
   void settle();
   void finishIfDrained();
   void failCapture(std::string);
   void record(Result);
   std::shared_ptr<Format> describeOutput(obs_output_t *) const;
+  // Guards everything below except output_, which only the OBS UI thread
+  // changes (start/stop/shutdown); receive() reads it under the lock.
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   std::thread worker_;
@@ -102,8 +105,8 @@ private:
   std::vector<Result> completed_;
   // watermark_ is on the replay timeline; rawMark_ is system time, which jumps
   // by shift_ whenever shared encoders were paused.
-  std::array<Time, 7> watermark_{}, rawMark_{}, shift_{}, step_{};
-  std::array<bool, 7> primed_{};
+  std::array<Time, maxStreams> watermark_{}, rawMark_{}, shift_{}, step_{};
+  std::array<bool, maxStreams> primed_{};
   Time pauseEnd_ = 0, resumeWall_ = 0;
   Time lastPacket_ = 0;
   Time lastPoll_ = 0, lastWall_ = 0;
