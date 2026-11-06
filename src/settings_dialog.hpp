@@ -49,6 +49,8 @@ public:
   // Called when a preset folder field changes.
   std::function<void()> onPresetFolderEdited;
   QCheckBox *separateEncoder;
+  // Opens OBS's own Hotkeys settings.
+  QPushButton *hotkeysButton;
   // Diagnostics tab.
   QLabel *details, *encoder, *notice;
 

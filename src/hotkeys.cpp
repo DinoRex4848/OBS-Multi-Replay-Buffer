@@ -14,49 +14,46 @@ static_assert(presetOf(saveAction(maxPresets)) == -1);
 static_assert(int(saveAction(2)) == 4); // Preset 3 has always been saved as "hotkey4".
 
 namespace {
-std::string description(int slot)
+std::string description(int slot, bool used)
 {
   if (slot == int(HotkeyAction::Start)) return "Multi-Length Replay: Start Buffering";
   if (slot == int(HotkeyAction::Stop)) return "Multi-Length Replay: Stop Buffering";
-  return "Multi-Length Replay: Save Replay " + std::to_string(presetOf(HotkeyAction(slot)) + 1);
+  return "Multi-Length Replay: Save Replay " + std::to_string(presetOf(HotkeyAction(slot)) + 1) +
+         (used ? "" : " (no preset)");
+}
+bool bound(obs_hotkey_id id)
+{
+  auto *bindings = obs_hotkey_save(id);
+  const bool result = obs_data_array_count(bindings) > 0;
+  obs_data_array_release(bindings);
+  return result;
 }
 } // namespace
 
 Hotkeys::Hotkeys(Handler handler) : handler_(std::move(handler))
 {
-  ids_.fill(OBS_INVALID_HOTKEY_ID);
-  for (int i = 0; i < hotkeyCount; ++i) contexts_[i] = {this, HotkeyAction(i)};
+  for (int slot = 0; slot < hotkeyCount; ++slot) {
+    contexts_[slot] = {this, HotkeyAction(slot)};
+    ids_[slot] = obs_hotkey_register_frontend(ids::hotkeys[slot], description(slot, slot < usedCount()).c_str(),
+                                              pressed, &contexts_[slot]);
+  }
   registered_ = true;
-  registerSlot(int(HotkeyAction::Start));
-  registerSlot(int(HotkeyAction::Stop));
 }
 Hotkeys::~Hotkeys() { unregister(); }
-void Hotkeys::registerSlot(int slot)
-{
-  ids_[slot] = obs_hotkey_register_frontend(ids::hotkeys[slot], description(slot).c_str(), pressed, &contexts_[slot]);
-}
 void Hotkeys::unregister()
 {
   if (!registered_) return;
   registered_ = false;
-  for (int slot = 0; slot < registeredCount(); ++slot) obs_hotkey_unregister(ids_[slot]);
+  for (auto id : ids_) obs_hotkey_unregister(id);
   ids_.fill(OBS_INVALID_HOTKEY_ID);
   presets_ = 0;
 }
 void Hotkeys::setPresetCount(int count)
 {
   if (!registered_) return;
-  count = std::clamp(count, 0, maxPresets);
-  while (presets_ < count) {
-    registerSlot(registeredCount());
-    ++presets_;
-  }
-  while (presets_ > count) {
-    --presets_;
-    const int slot = registeredCount();
-    obs_hotkey_unregister(ids_[slot]);
-    ids_[slot] = OBS_INVALID_HOTKEY_ID;
-  }
+  presets_ = std::clamp(count, 0, maxPresets);
+  for (int slot = int(HotkeyAction::SavePreset1); slot < hotkeyCount; ++slot)
+    obs_hotkey_set_description(ids_[slot], description(slot, slot < usedCount()).c_str());
 }
 void Hotkeys::removePreset(int preset)
 {
@@ -66,11 +63,15 @@ void Hotkeys::removePreset(int preset)
     obs_hotkey_load(id(saveAction(i)), bindings);
     obs_data_array_release(bindings);
   }
+  auto *none = obs_data_array_create();
+  obs_hotkey_load(id(saveAction(presets_ - 1)), none);
+  obs_data_array_release(none);
   setPresetCount(presets_ - 1);
 }
 void Hotkeys::load(obs_data_t *settings)
 {
-  for (int slot = 0; slot < registeredCount(); ++slot) {
+  if (!registered_) return;
+  for (int slot = 0; slot < hotkeyCount; ++slot) {
     auto *bindings = obs_data_get_array(settings, prefs::hotkeyKey(slot).c_str());
     if (!bindings) bindings = obs_data_array_create();
     obs_hotkey_load(ids_[slot], bindings);
@@ -79,7 +80,10 @@ void Hotkeys::load(obs_data_t *settings)
 }
 void Hotkeys::save(obs_data_t *settings) const
 {
-  for (int slot = 0; slot < registeredCount(); ++slot) {
+  if (!registered_) return;
+  for (int slot = 0; slot < hotkeyCount; ++slot) {
+    // Unused save hotkeys are stored only if the user bound them anyway.
+    if (slot >= usedCount() && !bound(ids_[slot])) continue;
     auto *bindings = obs_hotkey_save(ids_[slot]);
     obs_data_set_array(settings, prefs::hotkeyKey(slot).c_str(), bindings);
     obs_data_array_release(bindings);
@@ -87,8 +91,7 @@ void Hotkeys::save(obs_data_t *settings) const
 }
 bool Hotkeys::contains(obs_hotkey_id id) const
 {
-  return id != OBS_INVALID_HOTKEY_ID &&
-         std::find(ids_.begin(), ids_.begin() + registeredCount(), id) != ids_.begin() + registeredCount();
+  return id != OBS_INVALID_HOTKEY_ID && std::find(ids_.begin(), ids_.end(), id) != ids_.end();
 }
 void Hotkeys::pressed(void *data, obs_hotkey_id, obs_hotkey_t *, bool pressed)
 {

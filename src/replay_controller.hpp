@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QString>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -57,6 +58,11 @@ private:
   bool presetsEditable() const;
   void addPreset();
   void removePreset(int index);
+  // Asks before the dock's remove button deletes a preset. Replaced by the UI test.
+  bool confirmRemovePreset(int index);
+  std::function<bool(int)> confirmRemove_;
+  // Opens OBS's own Settings window on its Hotkeys page.
+  void openObsHotkeys();
   // Session.
   void startBuffer();
   void saveReplay(int preset, Time endpoint);

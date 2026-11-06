@@ -27,6 +27,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QSpinBox>
@@ -646,24 +647,40 @@ public:
     obs_data_array_release(bindings);
     return key;
   }
-  static QStringList registeredPresetHotkeys()
+  // Whether OBS lists all the plugin's hotkeys together, in order, before OBS's own, with
+  // only the save hotkeys of missing presets labeled "(no preset)". OBS's Hotkeys
+  // settings show frontend hotkeys in this listing order.
+  static bool hotkeysListed(int presets)
   {
-    QStringList names;
+    struct Listed {
+      QStringList names, descriptions;
+    } listed;
     obs_enum_hotkeys(
         [](void *data, obs_hotkey_id, obs_hotkey_t *hotkey) {
-          const QString name = obs_hotkey_get_name(hotkey);
-          if (name.startsWith("MultiReplay.Preset")) static_cast<QStringList *>(data)->append(name);
+          auto &listed = *static_cast<Listed *>(data);
+          listed.names.append(obs_hotkey_get_name(hotkey));
+          listed.descriptions.append(obs_hotkey_get_description(hotkey));
           return true;
         },
-        &names);
-    names.sort();
-    return names;
+        &listed);
+    const auto first = listed.names.indexOf(ids::hotkeys[0]);
+    if (first < 0 || first + hotkeyCount > listed.names.size()) return false;
+    for (int slot = 0; slot < hotkeyCount; ++slot) {
+      if (listed.names[first + slot] != ids::hotkeys[slot]) return false;
+      const int preset = presetOf(HotkeyAction(slot));
+      if (listed.descriptions[first + slot].endsWith(" (no preset)") != (preset >= presets)) return false;
+    }
+    for (int i = 0; i < first; ++i)
+      if (listed.names[i].startsWith("OBSBasic.")) return false;
+    return true;
   }
-  static QStringList presetHotkeyNames(int count)
+  // OBS's Settings window page list, while the window is open.
+  static QListWidget *obsSettingsPages()
   {
-    QStringList names;
-    for (int i = 0; i < count; ++i) names.append(ids::hotkeys[int(saveAction(i))]);
-    return names;
+    for (auto *widget : QApplication::topLevelWidgets())
+      if (widget->objectName() == "OBSBasicSettings" && widget->isVisible())
+        return widget->findChild<QListWidget *>("listWidget");
+    return nullptr;
   }
   // Variable preset count. A fresh profile starts with two presets; the run adds up to
   // eight, binds hotkeys, removes preset 3 and saves from the last preset into its own
@@ -695,7 +712,7 @@ public:
       at(500, [=] {
         testCheck(keptPresetsMatch(), "preset count, names, lengths and folders survive restart");
         testCheck(keptBindingsMatch(), "moved hotkey bindings survive restart");
-        testCheck(registeredPresetHotkeys() == presetHotkeyNames(7), "restart registers one save hotkey per preset");
+        testCheck(hotkeysListed(7), "after restart all hotkeys are listed together, in order");
         testCheck(dock->add->isEnabled() && dock->rows[0].remove->isEnabled(), "restored presets can be edited");
         testNote("restored presets");
         testFinish(output);
@@ -707,7 +724,7 @@ public:
                     dock->rows[0].seconds->value() == 60 && dock->rows[1].name->text() == "Replay 2" &&
                     dock->rows[1].seconds->value() == 240,
                 "a new profile starts with two presets");
-      testCheck(registeredPresetHotkeys() == presetHotkeyNames(2), "save hotkeys exist only for existing presets");
+      testCheck(hotkeysListed(2), "all hotkeys are listed together, missing presets marked");
       testCheck(dock->add->isEnabled() && dock->rows[0].remove->isEnabled() && dock->rows[1].remove->isEnabled(),
                 "presets can be added and removed while stopped");
       testNote("fresh presets");
@@ -715,7 +732,7 @@ public:
       testCheck(dock->presetCount() == maxPresets && !dock->add->isEnabled(), "Add stops at eight presets");
       testCheck(dock->rows[7].name->text() == "Replay 8" && dock->rows[7].seconds->value() == 60,
                 "added presets start at 60 seconds");
-      testCheck(registeredPresetHotkeys() == presetHotkeyNames(maxPresets), "each added preset gets a save hotkey");
+      testCheck(hotkeysListed(maxPresets), "added presets keep their hotkeys in place and in use");
       testCheck(dialog->presetFolders.size() == size_t(maxPresets), "the settings window has a folder per preset");
       dock->rows[0].seconds->setValue(maxPresetSeconds);
       dock->grab().save(output + "/presets-longest.png"); // The longest length must stay readable.
@@ -739,10 +756,21 @@ public:
       dock->grab().save(output + "/presets-eight.png");
       dialog->grab().save(output + "/presets-settings.png");
       dialog->budget->setValue(0.5); // An unapplied edit that removing a preset must keep.
+      ctl.confirmRemove_ = [](int) { return false; };
       dock->rows[2].remove->click();
+      testCheck(dock->presetCount() == maxPresets && dock->rows[2].name->text() == nameFor(3),
+                "declining the confirmation keeps the preset");
+      int asked = -1;
+      ctl.confirmRemove_ = [&asked](int preset) {
+        asked = preset;
+        return true;
+      };
+      dock->rows[2].remove->click();
+      testCheck(asked == 2, "removing a preset asks about that preset");
+      ctl.confirmRemove_ = [](int) { return true; };
       testCheck(keptPresetsMatch(), "removing a preset moves later names, lengths and folders up");
       testCheck(keptBindingsMatch(), "hotkey bindings move with their presets");
-      testCheck(registeredPresetHotkeys() == presetHotkeyNames(7), "removing a preset removes the last save hotkey");
+      testCheck(hotkeysListed(7) && boundKey(7).isEmpty(), "removing a preset unbinds and marks the last save hotkey");
       testCheck(dialog->budget->value() == 0.5 && ctl.draftSettings() != ctl.applied_,
                 "removing a preset keeps unapplied window edits");
       dialog->settingsButtons->button(QDialogButtonBox::Cancel)->click();
@@ -755,6 +783,22 @@ public:
       obs_data_array_release(moved);
       obs_data_release(data);
       testNote("preset 3 removed");
+    });
+    at(1100, [=] {
+      ctl.showSettings();
+      testCheck(dialog->hotkeysButton->isVisible(), "the settings window has an OBS Hotkeys button");
+      // OBS shows its Settings window modally; this check runs inside its event loop.
+      QTimer::singleShot(300, this, [=] {
+        auto *pages = obsSettingsPages();
+        testCheck(pages && pages->currentRow() == 6, "the Hotkeys button opens OBS Settings on the Hotkeys page");
+        if (pages) {
+          pages->window()->grab().save(output + "/obs-hotkeys.png");
+          static_cast<QDialog *>(pages->window())->reject();
+        }
+      });
+      dialog->hotkeysButton->click();
+      dialog->reject();
+      testNote("OBS hotkeys opened");
     });
     at(1500, [=] {
       ctl.startBuffer();

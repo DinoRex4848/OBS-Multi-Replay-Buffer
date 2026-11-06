@@ -29,7 +29,7 @@ Opening Settings again brings back the same window and preserves its selected ta
 
 ### Adding and removing presets
 
-Click **+** above the preset rows to add a preset, up to eight. A new preset is named "Replay N" and starts at 60 seconds. Click the trash button on a row to remove that preset; the presets below it move up, keeping their names, lengths, folders and hotkeys. At least one preset always remains.
+Click **+** above the preset rows to add a preset, up to eight. A new preset is named "Replay N" and starts at 60 seconds. Click the trash button on a row and confirm to remove that preset; the presets below it move up, keeping their names, lengths, folders and hotkeys. At least one preset always remains.
 
 All presets share one buffer, so adding presets does not use more memory. The buffer keeps enough history for the longest preset, up to the RAM budget. Presets can be added, removed or edited only while buffering is stopped.
 
@@ -37,7 +37,7 @@ Buffering starts manually after OBS opens. A start hotkey uses the last applied 
 
 ## Hotkeys
 
-Assign keys under **OBS Settings → Hotkeys**. They ship unassigned.
+Assign keys under **OBS Settings → Hotkeys**, or click **Open OBS Hotkeys…** in **Tools → Multi-Buffer Settings** to go straight there. They ship unassigned.
 
 | Action | Hotkey label | Internal identifier |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Assign keys under **OBS Settings → Hotkeys**. They ship unassigned.
 | … | … | … |
 | Save preset 8 | Multi-Length Replay: Save Replay 8 | `MultiReplay.Preset8` |
 
-Save hotkeys are listed only for presets that exist. Renaming a preset or changing its duration keeps that preset's hotkey. Removing a preset moves the hotkeys of the presets below it up with them; a newly added preset starts unassigned. Settings and bindings are stored per OBS profile. Unfocused desktop hotkeys, particularly on Wayland, need hands-on validation; routed hotkey tests do not prove that a desktop will deliver every key while another application is focused.
+All eight save hotkeys are always listed, together at the top of OBS's list; those for presets you have not added are marked "(no preset)" and do nothing. Renaming a preset or changing its duration keeps that preset's hotkey. Removing a preset moves the hotkeys of the presets below it up with them; the removed last slot's hotkey is cleared, so a newly added preset starts unassigned. Settings and bindings are stored per OBS profile. Unfocused desktop hotkeys, particularly on Wayland, need hands-on validation; routed hotkey tests do not prove that a desktop will deliver every key while another application is focused.
 
 ## Encoder modes and recording
 

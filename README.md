@@ -5,7 +5,7 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 [![Native builds](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml/badge.svg)](https://github.com/DinoRex4848/OBS-Multi-Replay-Buffer/actions/workflows/build.yml)
 [Installer instructions](docs/INSTALLERS.md) · [User guide](docs/USER_GUIDE.md) · [Build from source](docs/DEVELOPMENT.md) · [Validation and limitations](docs/VALIDATION.md) · [Changelog](CHANGELOG.md)
 
-Version `0.1.5` adds one to eight replay presets, with simple Windows batch installers and a single-file Linux Flatpak installer. Its Windows and Linux installers passed CI and were installed and used in OBS before release.
+Version `0.1.6` asks before removing a preset, keeps the plugin's hotkeys together at the top of OBS's Hotkeys settings, and adds a settings button that opens them. Version `0.1.5` added one to eight replay presets, with simple Windows batch installers and a single-file Linux Flatpak installer.
 
 <p align="center">
   <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three presets, each with Save and remove buttons, an add button, Start Buffering, and Settings" width="360">
@@ -16,7 +16,7 @@ Version `0.1.5` adds one to eight replay presets, with simple Windows batch inst
 ## What you can do
 
 - Keep three editable replay lengths ready at once: one minute, four minutes, and ten minutes by default.
-- Use one to eight presets: add them with **+** and remove them with the trash button.
+- Use one to eight presets: add them with **+** and remove them with the trash button (it asks first).
 - Save each preset with its own button or OBS hotkey, including while the dock is hidden.
 - Share OBS's recording encoders by default, or choose separate replay encoders when recording and replay need to run independently.
 - Preserve selected audio tracks and save directly to MKV without re-encoding the replay or first writing a longer recording.
@@ -30,7 +30,7 @@ Close OBS, then choose the download for your OBS installation from a successful 
 
 - **Normally installed Windows OBS:** extract the entire Windows ZIP, double-click `install.bat`, accept **Normal** (the default), check the detected OBS folder, and confirm. Approve administrator access when requested. Run `uninstall.bat` to remove the plugin.
 - **Portable Windows OBS:** extract the entire Windows ZIP, run `install.bat`, and choose **Portable** and your OBS folder. Use `uninstall.bat` for removal.
-- **Linux Flatpak OBS:** run `sh ./obs-multi-replay-0.1.5-linux-flatpak-x86_64.run` in a terminal, without sudo. Add `--uninstall` for removal. Python 3.10+ and a matching x86_64 Flatpak OBS are required.
+- **Linux Flatpak OBS:** run `sh ./obs-multi-replay-0.1.6-linux-flatpak-x86_64.run` in a terminal, without sudo. Add `--uninstall` for removal. Python 3.10+ and a matching x86_64 Flatpak OBS are required.
 - **Native Linux RPM/deb OBS:** the Flatpak installer cannot install into native OBS. Fedora 44 has a separate developer build path; a general native Linux installer is not offered.
 
 Run the same installer again to update or repair. Profiles, scenes, replay settings, hotkeys and recordings are preserved. Linux packages must match the exact OBS commit in `linux-build.json`; they do not change OBS or install host dependencies. See [installer instructions](docs/INSTALLERS.md) for compatibility and logs, and [validation](docs/VALIDATION.md) for test evidence. Old drafts are superseded; draft releases are visible to repository maintainers until published.
@@ -53,7 +53,7 @@ After building and installing the plugin for your OBS installation:
 2. Open **Docks → Multi-Length Replay**. This is the plugin's current name inside OBS.
 3. Open **Tools → Multi-Buffer Settings**, or click **Settings** in the dock. New profiles use a **6 GB decimal** replay budget and share recording encoders. Apply your changes.
 4. Adjust the preset names and durations (click **+** to add more), then click **Start Buffering**.
-5. Click a preset's **Save** button, or assign its shortcut under **OBS Settings → Hotkeys**. Saves become available once playable history exists; early saves can be shorter than requested.
+5. Click a preset's **Save** button, or assign its shortcut under **OBS Settings → Hotkeys** (the **Open OBS Hotkeys…** button in Multi-Buffer Settings goes straight there). Saves become available once playable history exists; early saves can be shorter than requested.
 6. Click **Stop Buffering** to stop collecting and finish accepted saves.
 
 Sharing also shares recording pauses: replay collects nothing while the recording is paused, and paused time is removed from the saved timeline. Select **Use separate replay encoder** if replay should continue through recording pauses. This adds encoding work when recording and replay run together.
