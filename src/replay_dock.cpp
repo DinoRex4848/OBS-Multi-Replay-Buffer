@@ -90,7 +90,7 @@ ReplayDock::Row ReplayDock::makeRow(const Preset &preset)
   row.seconds->setValue(preset.seconds);
   // Wide enough for the longest value plus the arrows; the rest goes to the name.
   row.seconds->setMaximumWidth(row.seconds->fontMetrics().horizontalAdvance(QString::number(maxPresetSeconds)) +
-                               4 * row.seconds->fontMetrics().height());
+                               3 * row.seconds->fontMetrics().height());
   row.save = new QPushButton("Save", this);
   row.remove = iconButton(this, "×", "icon-trash");
   row.remove->setToolTip("Remove this preset");

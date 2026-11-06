@@ -717,6 +717,8 @@ public:
                 "added presets start at 60 seconds");
       testCheck(registeredPresetHotkeys() == presetHotkeyNames(maxPresets), "each added preset gets a save hotkey");
       testCheck(dialog->presetFolders.size() == size_t(maxPresets), "the settings window has a folder per preset");
+      dock->rows[0].seconds->setValue(maxPresetSeconds);
+      dock->grab().save(output + "/presets-longest.png"); // The longest length must stay readable.
       for (int i = 0; i < maxPresets; ++i) {
         dock->rows[i].seconds->setValue(i + 2);
         dock->rows[i].name->setText(nameFor(i + 1));

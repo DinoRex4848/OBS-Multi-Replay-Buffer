@@ -28,6 +28,8 @@ Hosted CI does not exercise real capture with GPU encoders, desktop hotkeys, int
 - profile switching, restart persistence, hotkeys and encoder sharing with recording pause/resume;
 - the encoder reset warning.
 
+Configurable presets (one to eight) add the `presets` and `presets-restore` scenarios, which passed on 2026-11-06 with the same setup. They check that a new profile starts with two presets, that **+** stops at eight, and that removing preset 3 moves the later names, lengths, folders and hotkey bindings up. They also check that unapplied window edits survive, that presets lock while buffering, that the last preset saves to its own folder, and that everything is restored after a restart. With that change, every earlier scenario above passed again; they now add a third preset first, because new profiles start with two.
+
 The `shared` and `folders` scenarios need the Advanced NVENC template, as the next section explains.
 
 ## Known issue found during testing

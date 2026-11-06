@@ -8,7 +8,7 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 **Experimental — installers under validation.** Version `0.1.2` provides simple Windows batch installers and a single-file Linux Flatpak installer. Native acceptance of the latest batch package is pending CI. Release automation prepares an unpublished draft for testing.
 
 <p align="center">
-  <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three preset save buttons, Start Buffering, and Settings" width="360">
+  <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three presets, each with Save and remove buttons, an add button, Start Buffering, and Settings" width="360">
 </p>
 
 *The dock with customized 2, 4, and 6 second presets. New profiles start with two presets, 60 and 240 seconds; add up to eight.*
