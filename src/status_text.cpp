@@ -1,15 +1,32 @@
 #include "status_text.hpp"
-#include <iomanip>
-#include <locale>
-#include <sstream>
+#include <charconv>
+#include <cmath>
 
 namespace replay::text {
 std::string fixed(double value, int decimals)
 {
-  std::ostringstream out;
-  out.imbue(std::locale::classic());
-  out << std::fixed << std::setprecision(decimals) << value;
-  return out.str();
+  // Matches QString::number(value, 'f', decimals), which these texts used before:
+  // the exact binary value rounded half away from zero. printf and iostreams round
+  // ties to even (1.25 -> "1.2" instead of "1.3") and follow the C locale.
+  // 1100 fractional digits expand any double exactly, so nothing rounds early.
+  char buffer[1500];
+  const auto result =
+      std::to_chars(buffer, buffer + sizeof(buffer), std::fabs(value), std::chars_format::fixed, 1100);
+  std::string digits(buffer, result.ptr);
+  const auto point = digits.find('.');
+  bool roundUp = digits[point + 1 + decimals] >= '5';
+  digits.resize(decimals ? point + 1 + decimals : point);
+  for (auto i = digits.size(); roundUp; --i) {
+    if (i == 0) {
+      digits.insert(digits.begin(), '1');
+      break;
+    }
+    char &digit = digits[i - 1];
+    if (digit == '.') continue;
+    roundUp = digit == '9';
+    digit = roundUp ? '0' : char(digit + 1);
+  }
+  return (std::signbit(value) ? "-" : "") + digits;
 }
 std::string seconds(Time duration) { return fixed(double(duration) / microsecondsPerSecond, 1) + " s"; }
 std::string presetLabel(int index, const std::string &name) { return "Preset " + std::to_string(index + 1) + " — " + name; }

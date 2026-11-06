@@ -1,13 +1,10 @@
 #include "timebase.hpp"
+#include "test_support.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <utility>
 
 using namespace replay;
-#define CHECK(expr)                                                                                                    \
-  do {                                                                                                                 \
-    if (!(expr)) throw std::runtime_error(#expr);                                                                      \
-  } while (0)
 int main()
 {
   try {

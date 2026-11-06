@@ -1,13 +1,10 @@
 #include "history.hpp"
+#include "test_support.hpp"
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
 using namespace replay;
-#define CHECK(expr)                                                                                                    \
-  do {                                                                                                                 \
-    if (!(expr)) throw std::runtime_error(#expr);                                                                      \
-  } while (0)
 PacketPtr add(History &h, Time pts, bool key, size_t bytes = 100, int track = 0, Time dts = -1)
 {
   CHECK(h.prepare(bytes));
