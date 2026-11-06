@@ -30,7 +30,7 @@ Recording pauses affect shared encoders. The replay timeline removes paused time
 
 ## Packet ownership and memory
 
-`settings.cpp` maps supported OBS recording settings and freezes a session fingerprint. Advanced Standard Output inherits encoder configuration, track selection/names, and rescaling. Simple Output has explicit NVIDIA/x264 mappings.
+`recording_encoders.cpp` maps supported OBS recording settings and freezes a session fingerprint. Advanced Standard Output inherits encoder configuration, track selection/names, and rescaling. Simple Output has explicit NVIDIA/x264 mappings.
 
 `capture.cpp` registers encoded AV and video-only outputs. AV callbacks retain OBS packet references. Video-only callbacks expose temporary encoder storage, so each payload is copied once into shared history. Codec headers are frozen after the first encoded frame, when NVENC extradata is available.
 
@@ -48,7 +48,7 @@ Accepted jobs allow a 500 ms media settlement window and a two-second wall-time 
 
 ## Writer isolation and filenames
 
-`mux.cpp` launches `multi-replay-writer` using `posix_spawn` on Linux or `CreateProcessW` on Windows and sends compressed packets through a bounded pipe. `writer.cpp` links FFmpeg libraries and writes Matroska directly. A helper process allows stalled I/O to be terminated without cancelling an unsafe in-process writer thread.
+`writer_process.cpp` launches `multi-replay-writer` using `posix_spawn` on Linux or `CreateProcessW` on Windows and sends compressed packets through a bounded pipe. `writer.cpp` links FFmpeg libraries and writes Matroska directly. A helper process allows stalled I/O to be terminated without cancelling an unsafe in-process writer thread.
 
 Files are created exclusively under incomplete names. Successful finalization publishes them without replacing an existing file, using Linux `renameat2(RENAME_NOREPLACE)` or Windows `MoveFileW`. Filename collisions get new suffixes. Failed jobs never acquire a success name. The watchdog imposes a ten-second inactivity/finalization bound; shutdown also has bounded settlement/drain waits. This is best-effort orderly shutdown, not crash recovery.
 
@@ -56,13 +56,15 @@ Files are created exclusively under incomplete names. Successful finalization pu
 
 ## UI, preferences, and destinations
 
-`plugin.cpp` owns the replay controller, stable hotkeys, native dock, settings window, and status refresh. Encoding and disk writing run separately from the UI. The existing dock identifier and profile settings remain compatible.
+`module.cpp` creates one `ReplayController` after OBS loads its frontend and forwards frontend events to it. The controller owns the capture session, the applied settings and the hotkeys, refreshes the UI every 250 ms, and drives two views: `ReplayDock` and `SettingsDialog`. These build widgets only. `preferences.cpp` reads and writes the per-profile JSON, `hotkeys.cpp` registers the frontend hotkeys, and `status_text.cpp` composes the dock and Diagnostics text as plain, unit-tested functions. Encoding and disk writing run separately from the UI.
+
+Everything stored in existing installations is defined in `identifiers.hpp` and `preferences.cpp`: the profile section and keys, dock ID, hotkey names and Qt object names. Renaming any of them would break saved settings, dock layouts or hotkey bindings.
 
 Tools and the dock's Settings button open the same modeless Settings/Diagnostics window. Draft edits are separate from applied values. Apply persists preferences before promoting the draft; failure restores the previous in-memory configuration. Cancel/close discard the draft. Busy sessions lock editing without blocking Diagnostics. Profile changes close the window and discard pending edits.
 
 The original `folder` preference remains the shared destination override. `separate_folders` and `preset_folder0` through `preset_folder2` add per-preset routing. Blank per-preset paths independently resolve to OBS's recording directory. Destinations are frozen at session start, and each accepted job carries its own folder and completion identity. A destination failure affects that preset's save and is not cleared by another preset's success.
 
-Profile and scene-collection changes stop/drain the old session. A profile change additionally waits for encoder release so OBS can apply video settings. Shutdown removes the Tools action/dialog and drains work before OBS tears down media. Test-only UI automation is compiled only with `REPLAY_INTEGRATION_TEST=ON`; normal packages require OFF.
+Profile and scene-collection changes stop/drain the old session. A profile change additionally waits for encoder release so OBS can apply video settings. Shutdown removes the Tools action/dialog and drains work before OBS tears down media. Test-only UI automation lives in `integration_test.cpp` and is compiled only with `REPLAY_INTEGRATION_TEST=ON`; normal packages require OFF.
 
 ## Dependency environments and references
 

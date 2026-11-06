@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""Create a minimal isolated OBS profile for production load tests on builders."""
-import pathlib
-import json
-import sys
+"""Create a minimal isolated OBS configuration template for the UI and load tests.
 
-root = pathlib.Path(sys.argv[1]).resolve()
+The default profile uses Simple Output with x264, enough for the production load
+smoke on hosted builders. --advanced-nvenc uses Advanced Output with NVENC AV1 and
+2-second keyframes, like a typical recording setup; the shared and folders UI
+scenarios need it, because a shared replay can only start at a keyframe.
+"""
+import argparse
+import json
+import pathlib
+
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser.add_argument("directory", type=pathlib.Path, help="Fresh directory below the repository, named build*")
+parser.add_argument("--advanced-nvenc", action="store_true", help="Advanced Output, NVENC AV1, 2 s keyframes")
+args = parser.parse_args()
+root = args.directory.resolve()
 repo = pathlib.Path(__file__).resolve().parents[1]
 if not root.is_relative_to(repo) or not root.relative_to(repo).parts[0].startswith("build") or root.exists():
     raise SystemExit("Choose a fresh build directory below the repository")
@@ -13,7 +23,17 @@ profile = config / "basic/profiles/Test"
 profile.mkdir(parents=True)
 (config / "global.ini").write_text("[General]\nFirstRun=true\n[Basic]\nProfile=Test\nProfileDir=Test\nSceneCollection=Test\nSceneCollectionFile=Test\n")
 (config / "user.ini").write_text("[General]\nFirstRun=true\n[Basic]\nProfile=Test\nProfileDir=Test\nSceneCollection=Test\nSceneCollectionFile=Test\n[BasicWindow]\nPreviewEnabled=false\n")
-(profile / "basic.ini").write_text("[General]\nName=Test\n[Output]\nMode=Simple\n[Video]\nBaseCX=640\nBaseCY=360\nOutputCX=640\nOutputCY=360\nFPSType=0\nFPSCommon=30\n[SimpleOutput]\nRecQuality=HQ\nRecEncoder=x264\nRecAudioEncoder=aac\n")
+video = "[Video]\nBaseCX=640\nBaseCY=360\nOutputCX=640\nOutputCY=360\nFPSType=0\nFPSCommon=30\n"
+simple = "[SimpleOutput]\nRecQuality=HQ\nRecEncoder=x264\nRecAudioEncoder=aac\n"
+if args.advanced_nvenc:
+    (profile / "basic.ini").write_text(
+        "[General]\nName=Test\n[Output]\nMode=Advanced\n" + video + simple +
+        "[AdvOut]\nRecType=Standard\nRecEncoder=obs_nvenc_av1_tex\nRecAudioEncoder=ffmpeg_aac\n"
+        "RecFormat2=mkv\nRecTracks=1\nRecUseRescale=false\n")
+    (profile / "recordEncoder.json").write_text(json.dumps(
+        {"rate_control": "CQP", "cqp": 24, "preset2": "p5", "keyint_sec": 2}))
+else:
+    (profile / "basic.ini").write_text("[General]\nName=Test\n[Output]\nMode=Simple\n" + video + simple)
 scenes = config / "basic/scenes"
 scenes.mkdir()
 (scenes / "Test.json").write_text(json.dumps({

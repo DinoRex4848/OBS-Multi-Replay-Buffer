@@ -3,7 +3,7 @@
 Close OBS normally before installing, repairing or removing the plugin. Installers
 replace only this plugin's binaries and data. Profiles, scenes, replay preferences,
 hotkeys, recordings and other plugins are preserved. This revision is experimental;
-see [validation](INSTALLER_REVIEW.md) before sharing.
+see [validation](VALIDATION.md) before sharing.
 
 ## Windows 10/11 x64
 

@@ -116,6 +116,7 @@ The writer creates `*.incomplete.mkv` files and publishes final names only after
 | Clips are shorter than requested | Check warmup, memory pressure, recording pauses, and the partial reason. A longer buffer may need more RAM or a lower recording bitrate. |
 | Only one preset fails to save | Check that preset's directory, permissions, available space, and Flatpak filesystem access. |
 | Recording starts late while buffering | Shared consumers join at the next keyframe. Shorten the recording keyframe interval if appropriate. |
+| "Replay encoder stopped delivering packets" right after starting during a recording | A known issue with Simple Output and shared encoding when replay starts after the recording. Start replay first, use Advanced Output, or enable the separate replay encoder. |
 | Replay stops advancing during a recording pause | This is shared-mode behavior. Enable the separate replay encoder for independent collection. |
 | Warning about a second encoder | OBS recreated its recording encoder. Restart replay buffering after applying OBS settings. |
 | Settings cannot be edited | Wait for buffering and accepted saves to stop. Diagnostics remains available. |

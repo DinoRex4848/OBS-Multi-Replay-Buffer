@@ -32,7 +32,7 @@ Close OBS, then choose the download for your OBS installation from a successful 
 - **Linux Flatpak OBS:** run `sh ./obs-multi-replay-0.1.2-linux-flatpak-x86_64.run` in a terminal, without sudo. Add `--uninstall` for removal. Python 3.10+ and a matching x86_64 Flatpak OBS are required.
 - **Native Linux RPM/deb OBS:** the Flatpak installer cannot install into native OBS. Fedora 44 has a separate developer build path; a general native Linux installer is not offered.
 
-Run the same installer again to update or repair. Profiles, scenes, replay settings, hotkeys and recordings are preserved. Linux packages must match the exact OBS commit in `linux-build.json`; they do not change OBS or install host dependencies. See [installer instructions](docs/INSTALLERS.md) for compatibility and logs, and the [local review](docs/INSTALLER_REVIEW.md) for this revision's test evidence. Old drafts are superseded; draft releases are visible to repository maintainers until published.
+Run the same installer again to update or repair. Profiles, scenes, replay settings, hotkeys and recordings are preserved. Linux packages must match the exact OBS commit in `linux-build.json`; they do not change OBS or install host dependencies. See [installer instructions](docs/INSTALLERS.md) for compatibility and logs, and [validation](docs/VALIDATION.md) for test evidence. Old drafts are superseded; draft releases are visible to repository maintainers until published.
 
 ## Current platform status
 
@@ -69,7 +69,7 @@ cd OBS-Multi-Replay-Buffer
 ```
 
 - **Flatpak OBS:** install its matching SDK and run `./scripts/build-flatpak.sh`.
-- **Fedora RPM OBS:** install the native development packages, or build with rootless Podman.
+- **Fedora RPM OBS:** compile and run the tests with the native development packages or rootless Podman. Releases target Flatpak and Windows OBS.
 - **Windows:** install the C++ build tools and run `./scripts/build-windows.ps1` in PowerShell.
 
 The [development guide](docs/DEVELOPMENT.md) includes prerequisites, complete commands, developer installation instructions, and tests. Flatpak and RPM builds use different library environments and are not interchangeable. Compiled plugins, dependencies, and recordings are kept out of Git.

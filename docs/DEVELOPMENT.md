@@ -27,6 +27,28 @@ Use a build environment matching the OBS installation that will load the plugin.
 
 Normal replay saving uses FFmpeg libraries. The `ffmpeg` and `ffprobe` command-line tools are needed only for media verification.
 
+## Source layout
+
+| Path | Contents |
+| --- | --- |
+| `src/module.cpp` | OBS module entry points; creates the controller and forwards frontend events |
+| `src/replay_controller.*` | Coordinates the dock, settings window, hotkeys, saved settings and capture session |
+| `src/replay_dock.*`, `src/settings_dialog.*` | The two Qt views; they build widgets and hold no session logic |
+| `src/preferences.*` | Profile settings JSON: key names, defaults and the rollback-safe save |
+| `src/hotkeys.*` | Frontend hotkeys and their saved bindings |
+| `src/status_text.*` | Dock and Diagnostics text as plain functions, unit-tested |
+| `src/constants.hpp`, `src/identifiers.hpp` | Defaults and ranges; IDs stored in user profiles that must never change |
+| `src/recording_encoders.*` | Maps OBS recording settings to encoders, or attaches to the frontend's own |
+| `src/capture.*`, `src/history.*` | Packet history, save selection, the save queue and the writer worker |
+| `src/writer_process.*`, `src/wire.hpp`, `src/writer.cpp` | The writer helper process: client, protocol and the FFmpeg MKV writer |
+| `src/naming.*`, `src/timebase.hpp` | OBS filename tokens and timestamp conversion |
+| `src/integration_test.cpp` | UI test driver, compiled only with `REPLAY_INTEGRATION_TEST=ON` |
+| `packaging/` | Files shipped in the installers; `packaging/linux/replay_installer.py` and `packaging/windows/Installer.Core.ps1` are the transaction engines |
+| `scripts/` | Build, packaging, release and test tooling; `scripts/project.py` holds shared facts such as the version |
+| `tests/` | C++ unit tests, installer and release tests, and the OBS probe and UI launchers |
+
+The plugin version is set only in `CMakeLists.txt`.
+
 ## Flatpak OBS on Linux
 
 Install x86_64 OBS from Flathub and its matching SDK. The locally tested OBS 32.2.2 deployment uses Freedesktop SDK 25.08, Qt 6.11.1, and FFmpeg 8.1.2.
@@ -97,7 +119,18 @@ Native package acceptance exercises install/update/repair/removal, migration fro
 
 ## Automated tests
 
-History and naming tests are registered with CTest. They cover earlier-keyframe selection, warmup, shared packet lifetimes, reordered video, audio boundaries, pressure/admission behavior, and filename formatting/collisions.
+CTest runs these on every build, including in CI:
+
+| Test | Covers |
+| --- | --- |
+| `history` | Earlier-keyframe selection, warmup, shared packet lifetimes, reordered video, audio boundaries, pressure and admission |
+| `naming` | OBS filename tokens, prefixes/suffixes, sanitizing and rejected paths |
+| `timebase` | Encoder timestamp conversion |
+| `status_text` | Dock and Diagnostics text, number formatting and message priority |
+| `preferences` (Linux) | Profile settings keys, defaults, an older release's JSON and round trips |
+| `mux` (Linux) | Remuxing `tests/fixtures/mux-input.mkv` through the real writer, name collisions, missing folders/helper, disk full and a stalled writer (about 10 seconds) |
+
+Windows runs the first four; the others need OBS's or FFmpeg's DLLs, which the Windows package tests exercise instead.
 
 ```bash
 ctest --test-dir build-native --output-on-failure
@@ -127,6 +160,8 @@ flatpak run --devel --filesystem="$PWD" --command=python3 com.obsproject.Studio 
 ## Native media and mux probes
 
 These tests need the appropriate OBS runtime, graphics environment, and encoder. Close other OBS instances before GPU/UI tests. They generate media under the chosen build directory; they do not need your normal scene collection.
+
+`mux` already runs under CTest with a small fixture clip. To remux a real probe recording instead, use the commands below.
 
 For Flatpak:
 
@@ -158,20 +193,26 @@ For Flatpak, create the driver build with:
 ./scripts/build-flatpak.sh --ui-test
 ```
 
-The launcher requires a separate test-only OBS configuration template: a directory containing `obs-studio/`, an initialized test profile under `basic/profiles/`, and a blank scene collection. Initialize this in an isolated OBS configuration, with recording paths pointing at scratch directories. No ready-made profile, personal scene collection, or credentials are included in Git.
-
-Place your isolated template at `build/ui-config`, then run:
+The launcher needs a test-only OBS configuration template, never your own. Create one:
 
 ```bash
-./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py --build build-flatpak-ui \
-  --template build/ui-config --scratch build-flatpak/ui-layout --scenario layout
-./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py --build build-flatpak-ui \
-  --template build/ui-config --scratch build-flatpak/ui-layout --scenario restore
-./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py --build build-flatpak-ui \
-  --template build/ui-config --scratch build-flatpak/ui-settings --scenario settings
-python3 scripts/test-obs-ui.py --build build-flatpak --template build/ui-config \
-  --scratch build-flatpak/ui-production --scenario production --flatpak
+python3 tests/create_smoke_template.py build-ui-template --advanced-nvenc
 ```
+
+Without `--advanced-nvenc` the template uses Simple Output with x264. That is enough for the production smoke, but the `shared` and `folders` scenarios need short keyframe intervals and fail with it. Then run each scenario in a fresh scratch directory:
+
+```bash
+./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py \
+  --template build-ui-template --scratch build-ui/layout --scenario layout
+./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py \
+  --template build-ui-template --scratch build-ui/layout --scenario restore
+./scripts/test-flatpak.sh python3 scripts/test-obs-ui.py \
+  --template build-ui-template --scratch build-ui/settings --scenario settings
+python3 scripts/test-obs-ui.py --build build-flatpak --template build-ui-template \
+  --scratch build-ui/production --scenario production --flatpak
+```
+
+The full set is `layout` then `restore` (same scratch), `settings`, `folders` then `folders-restore` (same scratch), `independent`, `shared` and `reset`. Wait for each OBS instance to exit before starting the next. Each run writes `report.json` with every step's UI state; comparing reports before and after a change is a quick way to check that a refactor changed no behavior.
 
 The launcher copies the template and rewrites configuration/recording paths into a distinct scratch directory. Use a fresh scratch directory for each new scenario, except paired restore runs that intentionally reuse the earlier configuration. It refuses concurrent OBS instances. Flatpak's production smoke sets the scratch configuration inside the sandbox and tracks the test instance for cleanup.
 
@@ -185,4 +226,4 @@ Generated archives live in ignored `dist/`; none are committed. GitHub provides 
 
 Linux packaging requires Python 3.10+ and its standard library, not a virtualenv or GUI packaging tools. Both a single-file `.run` and the extracted tar format are produced. `bash scripts/build-flatpak.sh` produces the payload, the four-entry tar archive and the `.run`. `python3 scripts/package_linux.py --build build-flatpak` repackages an existing production build. The plugin version comes only from `CMakeLists.txt`; Python scripts read it through `scripts/project.py`, which also lists the documents copied into user packages. Run `python3 tests/linux_package_tests.py` for temporary fixtures and `python3 tests/linux_package_tests.py --production-archive PATH` only against the matching installed Flatpak OBS; the latter uses isolated HOME files while reading the real Flatpak installation.
 
-Version tags matching CMake create unpublished draft prereleases with the Windows ZIP and Linux run/tar assets, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks. The 0.1.2 local changes and unrun acceptance checks are recorded in [INSTALLER_REVIEW.md](INSTALLER_REVIEW.md).
+Version tags matching CMake create unpublished draft prereleases with the Windows ZIP and Linux run/tar assets, checksums, notices and Linux compatibility metadata. Interactive UAC and hardware capture remain manual checks; see [Validation](VALIDATION.md).

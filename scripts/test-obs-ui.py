@@ -12,9 +12,12 @@ import sys
 
 repo = pathlib.Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--build", type=pathlib.Path, default=repo / "build-ui-test")
-parser.add_argument("--template", type=pathlib.Path, default=repo / "build/ui-config")
-parser.add_argument("--scratch", type=pathlib.Path, default=repo / "build/compact-ui")
+parser.add_argument("--build", type=pathlib.Path, default=repo / "build-flatpak-ui",
+                    help="Build directory; the default is scripts/build-flatpak.sh --ui-test's")
+parser.add_argument("--template", type=pathlib.Path, required=True,
+                    help="Configuration template from tests/create_smoke_template.py")
+parser.add_argument("--scratch", type=pathlib.Path, required=True,
+                    help="Fresh directory below the repository for this run's configuration and clips")
 parser.add_argument("--scenario", choices=["layout", "restore", "encoder-restore", "upgrade", "settings", "folders", "folders-restore", "independent", "shared", "reset", "production"], default="layout")
 parser.add_argument("--simple", action="store_true", help="Use Simple HQ NVENC AV1 with one AAC track")
 parser.add_argument("--flatpak", action="store_true", help="Run the production smoke in the normal Flatpak runtime")
