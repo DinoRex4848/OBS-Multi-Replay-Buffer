@@ -23,9 +23,8 @@ const char *const shareLostText = "OBS recreated its recording encoder. A record
                                   "encoder; restart buffering to share again.";
 bool sameVideoFormat(const obs_video_info &a, const obs_video_info &b)
 {
-  return a.output_width == b.output_width && a.output_height == b.output_height &&
-         a.output_format == b.output_format && a.colorspace == b.colorspace && a.range == b.range &&
-         a.fps_num == b.fps_num && a.fps_den == b.fps_den;
+  return a.output_width == b.output_width && a.output_height == b.output_height && a.output_format == b.output_format &&
+         a.colorspace == b.colorspace && a.range == b.range && a.fps_num == b.fps_num && a.fps_den == b.fps_den;
 }
 } // namespace
 

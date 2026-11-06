@@ -299,8 +299,8 @@ Encoders build(bool share)
     audioId = get(config, "AdvOut", "RecAudioEncoder");
     if (share && (streamVideo || audioId == "none"))
       throw ShareUnavailable("OBS is set to record with the streaming encoder");
-    result.video = share ? shareVideo(frontend, advancedVideoName, videoId, settings.p)
-                         : createVideo(videoId, settings.p);
+    result.video =
+        share ? shareVideo(frontend, advancedVideoName, videoId, settings.p) : createVideo(videoId, settings.p);
     rescale(result.video, config, streamVideo ? "RescaleRes" : "RecRescaleRes",
             streamVideo ? "RescaleFilter" : "RecRescaleFilter");
     if (audioId == "none") audioId = get(config, "AdvOut", "AudioEncoder");

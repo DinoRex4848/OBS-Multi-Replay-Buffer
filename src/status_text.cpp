@@ -10,8 +10,7 @@ std::string fixed(double value, int decimals)
   // ties to even (1.25 -> "1.2" instead of "1.3") and follow the C locale.
   // 1100 fractional digits expand any double exactly, so nothing rounds early.
   char buffer[1500];
-  const auto result =
-      std::to_chars(buffer, buffer + sizeof(buffer), std::fabs(value), std::chars_format::fixed, 1100);
+  const auto result = std::to_chars(buffer, buffer + sizeof(buffer), std::fabs(value), std::chars_format::fixed, 1100);
   std::string digits(buffer, result.ptr);
   const auto point = digits.find('.');
   bool roundUp = digits[point + 1 + decimals] >= '5';
@@ -29,7 +28,10 @@ std::string fixed(double value, int decimals)
   return (std::signbit(value) ? "-" : "") + digits;
 }
 std::string seconds(Time duration) { return fixed(double(duration) / microsecondsPerSecond, 1) + " s"; }
-std::string presetLabel(int index, const std::string &name) { return "Preset " + std::to_string(index + 1) + " — " + name; }
+std::string presetLabel(int index, const std::string &name)
+{
+  return "Preset " + std::to_string(index + 1) + " — " + name;
+}
 std::string saveTooltip(Time requested, Time available)
 {
   const char *readiness = available >= requested ? "Full replay available"
@@ -60,7 +62,8 @@ StatusText status(const StatusInputs &in)
   std::string warning = in.warning;
   if (in.captureFailed) warning = in.captureMessage + (warning.empty() ? "" : "\n" + warning);
   if (in.degraded && in.collecting)
-    warning += (warning.empty() ? "" : "\n") + std::string("Memory pressure shortened history; partial clips may be saved.");
+    warning +=
+        (warning.empty() ? "" : "\n") + std::string("Memory pressure shortened history; partial clips may be saved.");
   if (!in.error.empty())
     state = "Error: " + in.error;
   else if (!warning.empty())

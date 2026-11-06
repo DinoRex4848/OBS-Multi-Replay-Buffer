@@ -13,8 +13,8 @@ static_assert(presetOf(saveAction(0)) == 0 && presetOf(HotkeyAction::SavePreset3
 
 namespace {
 constexpr const char *descriptions[hotkeyCount] = {
-    "Multi-Length Replay: Start Buffering", "Multi-Length Replay: Stop Buffering",
-    "Multi-Length Replay: Save Replay 1", "Multi-Length Replay: Save Replay 2", "Multi-Length Replay: Save Replay 3"};
+    "Multi-Length Replay: Start Buffering", "Multi-Length Replay: Stop Buffering", "Multi-Length Replay: Save Replay 1",
+    "Multi-Length Replay: Save Replay 2", "Multi-Length Replay: Save Replay 3"};
 }
 
 Hotkeys::Hotkeys(Handler handler) : handler_(std::move(handler))

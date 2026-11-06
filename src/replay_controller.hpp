@@ -84,7 +84,7 @@ private:
   // Dock status: the latest error, warning and save feedback.
   QString error_, warning_, feedback_, feedbackDetail_;
   Time feedbackUntil_ = 0;
-  bool saveError_ = false; // error_ came from a failed save,
+  bool saveError_ = false;   // error_ came from a failed save,
   int saveErrorPreset_ = -1; // of this preset (-1: any).
   struct PendingPreset {
     int index;

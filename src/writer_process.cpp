@@ -325,8 +325,8 @@ MuxResult writeMkv(const Format &format, Selection &clip, const std::filesystem:
     // negative video DTS for B-frame decoding; the muxer shifts streams together.
     for (auto &p : clip.packets) {
       if (p->size > maxPacketSize)
-        throw std::runtime_error("Encoded packet exceeds the writer's " + std::to_string(maxPacketSize / (1024 * 1024)) +
-                                 " MiB bound");
+        throw std::runtime_error("Encoded packet exceeds the writer's " +
+                                 std::to_string(maxPacketSize / (1024 * 1024)) + " MiB bound");
       WirePacket w{p->pts - clip.start, p->dts - clip.start, p->duration,
                    uint32_t(p->track),  p->key ? 1U : 0U,    uint32_t(p->size)};
       child.send(w);

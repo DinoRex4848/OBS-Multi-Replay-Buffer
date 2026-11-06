@@ -241,8 +241,7 @@ void Capture::start(const Options &options, obs_encoder_t *video, const std::vec
   }
   auto *settings = obs_data_create();
   obs_data_set_int(settings, "capture_context", int64_t(reinterpret_cast<intptr_t>(this)));
-  output_ = obs_output_create(audio.empty() ? videoOutputId : avOutputId,
-                              "Multi-Length Replay", settings, nullptr);
+  output_ = obs_output_create(audio.empty() ? videoOutputId : avOutputId, "Multi-Length Replay", settings, nullptr);
   obs_data_release(settings);
   if (!output_) throw std::runtime_error("Cannot create replay packet output");
   obs_output_set_video_encoder(output_, video);

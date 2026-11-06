@@ -35,7 +35,8 @@ ReplaySettings readSettings(obs_data_t *data)
   settings.folder = obs_data_get_string(data, folderKey);
   settings.shareEncoder = obs_data_get_bool(data, shareEncoderKey);
   settings.separateFolders = obs_data_get_bool(data, separateFoldersKey);
-  for (int i = 0; i < presetCount; ++i) settings.presetFolders[i] = obs_data_get_string(data, presetFolderKey(i).c_str());
+  for (int i = 0; i < presetCount; ++i)
+    settings.presetFolders[i] = obs_data_get_string(data, presetFolderKey(i).c_str());
   return settings;
 }
 Presets readPresets(obs_data_t *data)

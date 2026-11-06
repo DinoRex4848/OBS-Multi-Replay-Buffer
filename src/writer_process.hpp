@@ -6,7 +6,8 @@
 namespace replay {
 // Codecs the writer can mux; the replay output accepts only these.
 inline constexpr std::array<const char *, 3> videoCodecs = {"h264", "hevc", "av1"};
-inline constexpr std::array<const char *, 6> audioCodecs = {"aac", "flac", "opus", "pcm_s16le", "pcm_s24le", "pcm_f32le"};
+inline constexpr std::array<const char *, 6> audioCodecs = {"aac",       "flac",      "opus",
+                                                            "pcm_s16le", "pcm_s24le", "pcm_f32le"};
 
 struct Stream {
   std::string codec, name;

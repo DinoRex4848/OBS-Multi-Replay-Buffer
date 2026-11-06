@@ -15,7 +15,8 @@ const char *savedByOlderRelease =
 std::vector<std::string> keys(obs_data_t *data)
 {
   std::vector<std::string> names;
-  for (auto *item = obs_data_first(data); item; obs_data_item_next(&item)) names.push_back(obs_data_item_get_name(item));
+  for (auto *item = obs_data_first(data); item; obs_data_item_next(&item))
+    names.push_back(obs_data_item_get_name(item));
   return names;
 }
 } // namespace
@@ -55,7 +56,7 @@ int main()
     data = obs_data_create();
     prefs::write(data, settings, saved);
     const std::vector<std::string> expected = {
-        "budget_gb", "folder",         "share_encoder", "separate_folders", "preset_folder0", "seconds0", "name0",
+        "budget_gb",      "folder",   "share_encoder", "separate_folders", "preset_folder0", "seconds0", "name0",
         "preset_folder1", "seconds1", "name1",         "preset_folder2",   "seconds2",       "name2"};
     CHECK(keys(data) == expected);
     for (int i = 0; i < 5; ++i) CHECK(prefs::hotkeyKey(i) == "hotkey" + std::to_string(i));

@@ -97,7 +97,8 @@ public:
       return;
     }
     QTimer::singleShot(500, this, [this] { ctl.startBuffer(); });
-    QTimer::singleShot(4000, this, [this] { obs_hotkey_trigger_routed_callback(ctl.hotkeys_->id(HotkeyAction::SavePreset1), true); });
+    QTimer::singleShot(
+        4000, this, [this] { obs_hotkey_trigger_routed_callback(ctl.hotkeys_->id(HotkeyAction::SavePreset1), true); });
     QTimer::singleShot(6500, this, [this] {
       for (int key : {0, 1, 0, 2}) obs_hotkey_trigger_routed_callback(ctl.hotkeys_->id(saveAction(key)), true);
     });
@@ -149,12 +150,14 @@ public:
     value["settings_minimum_height"] = dialog->minimumSizeHint().height();
     value["diagnostics_fit"] = dialog->details->height() >= dialog->details->heightForWidth(dialog->details->width()) &&
                                dialog->encoder->height() >= dialog->encoder->heightForWidth(dialog->encoder->width());
-    value["settings_locked"] = !dialog->budget->isEnabled() && !dialog->folder->isEnabled() && !dialog->separateEncoder->isEnabled();
+    value["settings_locked"] =
+        !dialog->budget->isEnabled() && !dialog->folder->isEnabled() && !dialog->separateEncoder->isEnabled();
     value["width"] = dock->width();
     value["height"] = dock->height();
     value["minimum_width"] = dock->minimumSizeHint().width();
     value["minimum_height"] = dock->minimumSizeHint().height();
-    value["preset_seconds"] = QJsonArray{dock->seconds[0]->value(), dock->seconds[1]->value(), dock->seconds[2]->value()};
+    value["preset_seconds"] =
+        QJsonArray{dock->seconds[0]->value(), dock->seconds[1]->value(), dock->seconds[2]->value()};
     value["save_tooltip"] = dock->saves[0]->toolTip();
     value["notice_tooltip"] = dock->state->toolTip();
     value["last_result_id"] = double(ctl.lastResultId_);
@@ -296,7 +299,8 @@ public:
     testCheck(!dialog->isVisible(), "window starts hidden");
     ctl.settingsAction_->trigger();
     testCheck(!dialog->isModal() && dialog->tabs->count() == 2, "modeless window has two tabs");
-    testCheck(!dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled(), "Apply starts disabled without changes");
+    testCheck(!dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled(),
+              "Apply starts disabled without changes");
     dialog->resize(440, 300);
     dialog->tabs->setCurrentIndex(1);
     dialog->budget->setValue(0.5);
@@ -312,11 +316,13 @@ public:
     dock->settingsShortcut->click();
     testCheck(dialog->isVisible() && dialog->tabs->currentIndex() == 1 && dialog->budget->value() == 0.5 &&
                   dialog->folder->text() == output + "/unapplied" && !dialog->separateEncoder->isChecked() &&
-                  dialog->separateFolders->isChecked() && dialog->presetFolders[0]->text() == output + "/unapplied preset" &&
+                  dialog->separateFolders->isChecked() &&
+                  dialog->presetFolders[0]->text() == output + "/unapplied preset" &&
                   dialog->parent()->findChildren<QDialog *>("multiReplaySettingsDialog").size() == 1,
               "repeated dock shortcut preserves the menu window, tab and all pending edits");
     dialog->tabs->setCurrentIndex(0);
-    testCheck(dialog->budget->value() == 0.5 && !dialog->separateEncoder->isChecked(), "switching tabs preserves pending settings");
+    testCheck(dialog->budget->value() == 0.5 && !dialog->separateEncoder->isChecked(),
+              "switching tabs preserves pending settings");
     dock->seconds[0]->setValue(3);
     dock->seconds[0]->setValue(2);
     dock->names[0]->setText("Saved preset");
@@ -402,7 +408,8 @@ public:
       dialog->budget->setValue(0.25);
       dialog->separateEncoder->setChecked(true);
       dialog->settingsButtons->button(QDialogButtonBox::Apply)->click();
-      testCheck(!ctl.applied_.shareEncoder && dialog->separateEncoder->isChecked() && testPersistedSettings(ctl.applied_),
+      testCheck(!ctl.applied_.shareEncoder && dialog->separateEncoder->isChecked() &&
+                    testPersistedSettings(ctl.applied_),
                 "checked separate encoder commits independent mode with the existing profile key");
       dialog->budget->setValue(0.5);
       dialog->folder->setText(output + "/unapplied");
@@ -413,12 +420,15 @@ public:
     });
     at(3500, [=] {
       const auto status = ctl.capture_.status();
-      testCheck(status.collecting && !status.shared && ctl.sessionFolders_[0] == filePath(output) && ctl.applied_.budgetGb == 0.25,
+      testCheck(status.collecting && !status.shared && ctl.sessionFolders_[0] == filePath(output) &&
+                    ctl.applied_.budgetGb == 0.25,
                 "hotkey starts buffering with applied folder, budget and sharing");
       testCheck(!dialog->budget->isEnabled() && !dialog->folder->isEnabled() && !dialog->browse->isEnabled() &&
-                    !dialog->separateEncoder->isEnabled() && !dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled() &&
-                    !dialog->settingsButtons->button(QDialogButtonBox::Ok)->isEnabled() && !dialog->separateFolders->isEnabled() &&
-                    !dialog->presetFolders[0]->isEnabled() && !dialog->presetBrowse[0]->isEnabled() && !ctl.applySettings(),
+                    !dialog->separateEncoder->isEnabled() &&
+                    !dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled() &&
+                    !dialog->settingsButtons->button(QDialogButtonBox::Ok)->isEnabled() &&
+                    !dialog->separateFolders->isEnabled() && !dialog->presetFolders[0]->isEnabled() &&
+                    !dialog->presetBrowse[0]->isEnabled() && !ctl.applySettings(),
                 "buffering locks fields and prevents commits");
       dialog->tabs->setCurrentIndex(1);
       dock->settingsShortcut->click();
@@ -437,12 +447,13 @@ public:
       testCheck(dock->settingsShortcut->isEnabled() && dialog->isVisible() && dialog->tabs->currentIndex() == 1 &&
                     dialog->budget->value() == 0.5 && !(ctl.draftSettings() == ctl.applied_),
                 "dock shortcut stays available while draining and retains pending edits");
-      testCheck(ctl.capture_.status().draining && !dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled() &&
-                    !ctl.applySettings(),
+      testCheck(ctl.capture_.status().draining &&
+                    !dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled() && !ctl.applySettings(),
                 "draining prevents commits");
     });
     at(7500, [=] {
-      testCheck(!ctl.capture_.status().draining && dialog->budget->value() == 0.5 && !dialog->separateEncoder->isChecked() &&
+      testCheck(!ctl.capture_.status().draining && dialog->budget->value() == 0.5 &&
+                    !dialog->separateEncoder->isChecked() &&
                     dialog->settingsButtons->button(QDialogButtonBox::Apply)->isEnabled(),
                 "pending edits survive buffering and unlock after draining");
       dialog->settingsButtons->button(QDialogButtonBox::Cancel)->click();
@@ -496,7 +507,8 @@ public:
     dialog->separateFolders->setChecked(true);
     dialog->presetFolders[0]->setText(a);
     dialog->separateFolders->setChecked(false);
-    testCheck(dialog->presetFolders[0]->text() == a && dialog->folder->isEnabled(), "turning separate folders off retains paths");
+    testCheck(dialog->presetFolders[0]->text() == a && dialog->folder->isEnabled(),
+              "turning separate folders off retains paths");
     dialog->separateFolders->setChecked(true);
     testCheck(dialog->presetFolders[0]->text() == a && !dialog->folder->isEnabled() && !dialog->browse->isEnabled() &&
                   dialog->presetFolders[0]->isEnabled(),
@@ -516,7 +528,8 @@ public:
         if (phase == 6) dialog->presetFolders[0]->setText(missing);
         if (phase == 7) dialog->presetFolders[2]->setText(disconnected);
         if (phase == 8) dialog->presetFolders[2]->setText(readOnly);
-        testCheck(ctl.applySettings() && testPersistedSettings(ctl.applied_), "Apply persists folder mode and all paths");
+        testCheck(ctl.applySettings() && testPersistedSettings(ctl.applied_),
+                  "Apply persists folder mode and all paths");
         if (phase == 5) dialog->grab().save(output + "/preset-folders-settings.png");
         ctl.startBuffer();
         testCheck(ctl.capture_.status().collecting, "buffer starts for the selected folder configuration");
@@ -532,11 +545,13 @@ public:
         for (int i = 0; i < 3; ++i)
           routed &= ctl.sessionFolders_[i].lexically_normal() == filePath(expected[i]).lexically_normal();
         testCheck(routed, "each session resolves independent OBS and custom destinations");
-        testCheck(!dialog->separateFolders->isEnabled() && !dialog->presetFolders[0]->isEnabled() && !dialog->presetBrowse[2]->isEnabled(),
+        testCheck(!dialog->separateFolders->isEnabled() && !dialog->presetFolders[0]->isEnabled() &&
+                      !dialog->presetBrowse[2]->isEnabled(),
                   "folder controls lock during buffering");
         if (phase == 5) {
           dialog->tabs->setCurrentIndex(1);
-          testCheck(dialog->encoder->text().contains(a) && dialog->encoder->text().contains(b) && dialog->encoder->text().contains(c),
+          testCheck(dialog->encoder->text().contains(a) && dialog->encoder->text().contains(b) &&
+                        dialog->encoder->text().contains(c),
                     "Diagnostics lists all three active destinations");
         }
         testNote(qPrintable(QString("folder phase %1").arg(phase)));
