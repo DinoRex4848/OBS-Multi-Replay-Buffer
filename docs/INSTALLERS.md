@@ -7,7 +7,7 @@ see [validation](VALIDATION.md) before sharing.
 
 ## Windows 10/11 x64
 
-Download **`obs-multi-replay-0.1.2-windows-x64.zip`** and extract the **entire ZIP**
+Download **`obs-multi-replay-1.5.0-windows-x64.zip`** and extract the **entire ZIP**
 into a writable folder. It contains only `install.bat`, `uninstall.bat`, `README.txt`
 and `PluginFiles/`. Double-click **install.bat** and:
 
@@ -56,14 +56,14 @@ uninstaller. Unfamiliar files are retained and reported.
 
 ## Linux x86_64: Flatpak OBS
 
-Download **`obs-multi-replay-0.1.2-linux-flatpak-x86_64.run`**, open a terminal in
+Download **`obs-multi-replay-1.5.0-linux-flatpak-x86_64.run`**, open a terminal in
 the download folder, and run:
 
 ```sh
-sh ./obs-multi-replay-0.1.2-linux-flatpak-x86_64.run
+sh ./obs-multi-replay-1.5.0-linux-flatpak-x86_64.run
 # Update or repair: run the same command again.
 # Remove only the plugin:
-sh ./obs-multi-replay-0.1.2-linux-flatpak-x86_64.run --uninstall
+sh ./obs-multi-replay-1.5.0-linux-flatpak-x86_64.run --uninstall
 ```
 
 Run as your desktop user, **without sudo**. Requirements are Python 3.10+, Flatpak,
