@@ -11,9 +11,18 @@ constexpr int maxAudioTracks = 6;
 constexpr int maxStreams = 1 + maxAudioTracks;
 
 // Replay presets shown in the dock. Settings keys and hotkeys are numbered by preset.
-constexpr int presetCount = 3;
-constexpr int defaultPresetSeconds[presetCount] = {60, 240, 600};
+constexpr int minPresets = 1, maxPresets = 8;
+constexpr int defaultPresetCount = 2; // A profile with no saved replay settings.
+constexpr int legacyPresetCount = 3;  // Saved before the count was configurable.
+constexpr int newPresetSeconds = 60;  // A preset added with the + button.
 constexpr int minPresetSeconds = 1, maxPresetSeconds = 86400;
+// Length a saved slot falls back to when its key is missing; the first three are
+// the defaults of releases that always had three presets.
+constexpr int slotDefaultSeconds(int index)
+{
+  constexpr int legacy[legacyPresetCount] = {60, 240, 600};
+  return index >= 0 && index < legacyPresetCount ? legacy[index] : newPresetSeconds;
+}
 
 // Replay memory budget, in decimal GB as shown in the settings window.
 constexpr double defaultBudgetGb = 6;

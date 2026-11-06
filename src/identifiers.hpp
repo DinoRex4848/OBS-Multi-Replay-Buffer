@@ -10,7 +10,8 @@ constexpr const char *startButton = "replayBufferButton";
 constexpr const char *settingsDialog = "multiReplaySettingsDialog";
 constexpr const char *settingsButton = "multiReplaySettingsButton";
 constexpr const char *settingsAction = "multiReplaySettingsAction";
-// Hotkey names, in HotkeyAction order.
-constexpr const char *hotkeys[] = {"MultiReplay.Start", "MultiReplay.Stop", "MultiReplay.Preset1",
-                                   "MultiReplay.Preset2", "MultiReplay.Preset3"};
+// Hotkey names, in HotkeyAction order: Start, Stop, then one per preset slot.
+constexpr const char *hotkeys[] = {
+    "MultiReplay.Start",   "MultiReplay.Stop",    "MultiReplay.Preset1", "MultiReplay.Preset2", "MultiReplay.Preset3",
+    "MultiReplay.Preset4", "MultiReplay.Preset5", "MultiReplay.Preset6", "MultiReplay.Preset7", "MultiReplay.Preset8"};
 } // namespace replay::ids

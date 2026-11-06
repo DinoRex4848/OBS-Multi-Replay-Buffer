@@ -1,7 +1,8 @@
 #pragma once
 #include "preferences.hpp"
 #include <QDialog>
-#include <array>
+#include <functional>
+#include <vector>
 
 class QCheckBox;
 class QDialogButtonBox;
@@ -10,6 +11,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QTabWidget;
+class QVBoxLayout;
 
 namespace replay {
 // Diagnostics encoder text before a session starts.
@@ -21,8 +23,11 @@ class SettingsDialog : public QDialog {
 public:
   explicit SettingsDialog(QWidget *parent);
   ReplaySettings draft() const;
-  // Replaces the draft without emitting change signals.
+  // Replaces the draft without emitting change signals. Also sizes the preset folder
+  // rows to settings.presetFolders.
   void setDraft(const ReplaySettings &settings);
+  // Adds or removes preset folder rows at the end; new rows start blank.
+  void setPresetFolderCount(int count);
   // Enables fields for the current state. `editable`: stopped and idle; `busy`: buffering or draining.
   void updateState(bool editable, bool busy, bool dirty, bool open, const Presets &presets);
   void showError(const QString &message);
@@ -36,11 +41,18 @@ public:
   QPushButton *browse;
   QCheckBox *separateFolders;
   QWidget *presetFoldersView;
-  std::array<QLabel *, presetCount> presetFolderLabels{};
-  std::array<QLineEdit *, presetCount> presetFolders{};
-  std::array<QPushButton *, presetCount> presetBrowse{};
+  // One row per preset.
+  std::vector<QWidget *> presetFolderRows;
+  std::vector<QLabel *> presetFolderLabels;
+  std::vector<QLineEdit *> presetFolders;
+  std::vector<QPushButton *> presetBrowse;
+  // Called when a preset folder field changes.
+  std::function<void()> onPresetFolderEdited;
   QCheckBox *separateEncoder;
   // Diagnostics tab.
   QLabel *details, *encoder, *notice;
+
+private:
+  QVBoxLayout *presetFoldersLayout_;
 };
 } // namespace replay

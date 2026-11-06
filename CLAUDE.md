@@ -13,6 +13,7 @@ An OBS Studio plugin (C++17, Qt 6, libobs, FFmpeg) that keeps one encoded RAM hi
 ## Rules that protect existing users
 
 - Never rename anything in `src/identifiers.hpp` or the JSON keys in `src/preferences.cpp`. They are stored in users' profiles, dock layouts and hotkey bindings.
+- Preset slot N is always `nameN`/`secondsN`/`preset_folderN`, hotkey `MultiReplay.Preset{N+1}` saved as `hotkey{N+2}`. Profiles without `preset_count` must keep reading as three presets.
 - Keep user-visible text and number formatting unchanged unless the change is intended. `text::fixed` deliberately rounds like `QString::number`.
 - Never package or install a `REPLAY_INTEGRATION_TEST=ON` build; the packaging scripts refuse one.
 - The Linux module must link FFmpeg 8 (avformat/avcodec 62, avutil 60). The Windows module must not import FFmpeg at all; only the writer helper may.

@@ -212,7 +212,7 @@ python3 scripts/test-obs-ui.py --build build-flatpak --template build-ui-templat
   --scratch build-ui/production --scenario production --flatpak
 ```
 
-The full set is `layout` then `restore` (same scratch), `settings`, `folders` then `folders-restore` (same scratch), `independent`, `shared` and `reset`. Wait for each OBS instance to exit before starting the next. Each run writes `report.json` with every step's UI state; comparing reports before and after a change is a quick way to check that a refactor changed no behavior.
+The full set is `layout` then `restore` (same scratch), `settings`, `folders` then `folders-restore` (same scratch), `presets` then `presets-restore` (same scratch), `independent`, `shared` and `reset`. Wait for each OBS instance to exit before starting the next. Each run writes `report.json` with every step's UI state; comparing reports before and after a change is a quick way to check that a refactor changed no behavior.
 
 The launcher copies the template and rewrites configuration/recording paths into a distinct scratch directory. Use a fresh scratch directory for each new scenario, except paired restore runs that intentionally reuse the earlier configuration. It refuses concurrent OBS instances. Flatpak's production smoke sets the scratch configuration inside the sandbox and tracks the test instance for cleanup.
 
