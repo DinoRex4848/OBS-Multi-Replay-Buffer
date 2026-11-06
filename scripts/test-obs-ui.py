@@ -18,7 +18,7 @@ parser.add_argument("--template", type=pathlib.Path, required=True,
                     help="Configuration template from tests/create_smoke_template.py")
 parser.add_argument("--scratch", type=pathlib.Path, required=True,
                     help="Fresh directory below the repository for this run's configuration and clips")
-parser.add_argument("--scenario", choices=["layout", "restore", "encoder-restore", "upgrade", "settings", "folders", "folders-restore", "independent", "shared", "reset", "production"], default="layout")
+parser.add_argument("--scenario", choices=["layout", "restore", "encoder-restore", "upgrade", "settings", "folders", "folders-restore", "independent", "shared", "reset", "presets", "presets-restore", "production"], default="layout")
 parser.add_argument("--simple", action="store_true", help="Use Simple HQ NVENC AV1 with one AAC track")
 parser.add_argument("--flatpak", action="store_true", help="Run the production smoke in the normal Flatpak runtime")
 parser.add_argument("--filename-format")
@@ -40,13 +40,14 @@ if args.flatpak and "com.obsproject.Studio" in subprocess.check_output(
         ["flatpak", "ps", "--columns=application"], text=True).splitlines():
     parser.error("Close the other Flatpak OBS instance before running GPU/UI tests")
 config_root = scratch / "config"
-if args.scenario not in ["restore", "encoder-restore", "folders-restore"]:
+restore_scenarios = ["restore", "encoder-restore", "folders-restore", "presets-restore"]
+if args.scenario not in restore_scenarios:
     if config_root.exists():
         parser.error("Use a fresh scratch directory, or --scenario restore to check its saved layout")
     shutil.copytree(template, config_root)
 elif not config_root.exists():
     parser.error("Restore requires the scratch configuration from a previous layout run")
-clips = scratch / ("restore-clips" if args.scenario in ["restore", "encoder-restore", "folders-restore"] else "clips")
+clips = scratch / ("restore-clips" if args.scenario in restore_scenarios else "clips")
 recordings = scratch / "recordings"
 clips.mkdir(parents=True, exist_ok=True)
 recordings.mkdir(parents=True, exist_ok=True)
@@ -82,8 +83,8 @@ if args.scenario == "upgrade":
     legacy_settings = {path: json.loads(read_ini(path).get("MultiLengthReplay", "Settings")) for path in profiles}
 for path in profiles:
     profile = read_ini(path)
-    if args.scenario == "production":
-        profile.remove_section("MultiLengthReplay")
+    if args.scenario in ["production", "presets"]:
+        profile.remove_section("MultiLengthReplay")  # A profile that never saved replay settings.
     if args.simple:
         profile.set("Output", "Mode", "Simple")
         profile.set("SimpleOutput", "RecQuality", "HQ")
@@ -136,6 +137,7 @@ env.pop("REPLAY_TEST_LAYOUT", None)
 env.pop("REPLAY_TEST_SETTINGS", None)
 env.pop("REPLAY_TEST_FOLDERS", None)
 env.pop("REPLAY_TEST_FOLDER_BASE", None)
+env.pop("REPLAY_TEST_PRESETS", None)
 if args.scenario in ["layout", "restore", "encoder-restore", "upgrade"]:
     env["REPLAY_TEST_LAYOUT"] = "1" if args.scenario == "layout" else "restore"
 elif args.scenario in ["shared", "reset"]:
@@ -145,6 +147,8 @@ elif args.scenario == "settings":
 elif args.scenario in ["folders", "folders-restore"]:
     env["REPLAY_TEST_FOLDERS"] = "restore" if args.scenario == "folders-restore" else "1"
     env["REPLAY_TEST_FOLDER_BASE"] = str(scratch / "clips")
+elif args.scenario in ["presets", "presets-restore"]:
+    env["REPLAY_TEST_PRESETS"] = "restore" if args.scenario == "presets-restore" else "1"
 if args.scenario == "production":
     env.pop("REPLAY_TEST_OUTPUT", None)
     command = [sys.executable, str(repo / "tests/obs_load_smoke.py"), "--config", str(config_root),
@@ -155,9 +159,10 @@ if args.scenario == "production":
     subprocess.run(command, env=env, check=True)
     for path in profiles:
         settings = json.loads(read_ini(path).get("MultiLengthReplay", "Settings"))
-        assert [settings[f"seconds{i}"] for i in range(3)] == [60, 240, 600], settings
+        assert settings["preset_count"] == 2 and "seconds2" not in settings, settings
+        assert [settings[f"seconds{i}"] for i in range(2)] == [60, 240], settings
         assert settings["budget_gb"] == 6 and settings["share_encoder"], settings
-        assert not settings["separate_folders"] and all(not settings[f"preset_folder{i}"] for i in range(3)), settings
+        assert not settings["separate_folders"] and all(not settings[f"preset_folder{i}"] for i in range(2)), settings
     print(f"PASS: production module, manual startup, defaults and baseline allocations; {scratch}")
     sys.exit(0)
 log_path = scratch / f"obs-{args.scenario}.log"
@@ -282,6 +287,30 @@ elif args.scenario == "folders":
     saved = json.loads(read_ini(profiles[0]).get("MultiLengthReplay", "Settings"))
     assert saved["separate_folders"] and saved["folder"] == str(clips / "Shared"), saved
     assert [saved[f"preset_folder{i}"] for i in range(3)] == [str(clips / name) for name in ["Preset 1 α", "Preset 2 β", "Preset 3 γ"]], saved
+elif args.scenario == "presets":
+    assert len(report["checks"]) >= 25, report["checks"]
+    assert steps["fresh presets"]["preset_count"] == 2, steps
+    assert steps["fresh presets"]["preset_seconds"] == [60, 240], steps
+    assert steps["eight presets"]["preset_count"] == 8, steps
+    assert steps["preset 3 removed"]["preset_seconds"] == [2, 3, 5, 6, 7, 8, 9], steps
+    assert steps["presets locked"]["collecting"], steps
+    preset_folders = scratch / "preset-folders"
+    successful = [result for result in report["saved"] if not result["error"]]
+    assert len(successful) == 2, report["saved"]
+    assert {pathlib.Path(result["path"]).parent for result in successful} == {
+        preset_folders / "Preset 1", preset_folders / "Preset 8"}, successful
+    assert len(list((preset_folders / "Preset 8").glob("*.mkv"))) == 1, "last preset saves to its own folder"
+    assert not list((preset_folders / "Preset 3").glob("*.mkv")), "removed preset's folder stays unused"
+    saved = json.loads(read_ini(profiles[0]).get("MultiLengthReplay", "Settings"))
+    assert saved["preset_count"] == 7 and saved["separate_folders"], saved
+    assert [saved[f"seconds{i}"] for i in range(7)] == [2, 3, 5, 6, 7, 8, 9], saved
+    assert [saved[f"preset_folder{i}"] for i in range(7)] == [
+        str(preset_folders / f"Preset {n}") for n in [1, 2, 4, 5, 6, 7, 8]], saved
+    assert "seconds7" not in saved and "hotkey9" not in saved, saved
+    assert [len(saved[f"hotkey{i}"]) for i in range(2, 9)] == [0, 0, 1, 0, 0, 0, 1], saved
+elif args.scenario == "presets-restore":
+    assert len(report["checks"]) == 4, report["checks"]
+    assert steps["restored presets"]["preset_seconds"] == [2, 3, 5, 6, 7, 8, 9], steps
 elif args.scenario == "folders-restore":
     assert "preset folders survive restart" in report["checks"], report
     assert steps["restored preset folders"]["separate_folders"], steps

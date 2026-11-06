@@ -2,8 +2,8 @@
 #include "constants.hpp"
 #include <obs-data.h>
 #include <util/config-file.h>
-#include <array>
 #include <string>
+#include <vector>
 
 namespace replay {
 // Settings edited in the Tools window: changed as a draft, applied while stopped.
@@ -12,7 +12,8 @@ struct ReplaySettings {
   std::string folder; // Blank: OBS's recording folder.
   bool shareEncoder = true;
   bool separateFolders = false;
-  std::array<std::string, presetCount> presetFolders{}; // Blank: OBS's recording folder.
+  // One per preset, in dock order. Blank: OBS's recording folder.
+  std::vector<std::string> presetFolders = std::vector<std::string>(defaultPresetCount);
   bool operator==(const ReplaySettings &other) const
   {
     return budgetGb == other.budgetGb && folder == other.folder && shareEncoder == other.shareEncoder &&
@@ -25,16 +26,24 @@ struct Preset {
   std::string name;
   int seconds = 0;
 };
-using Presets = std::array<Preset, presetCount>;
+// minPresets to maxPresets entries, in dock order.
+using Presets = std::vector<Preset>;
+// Preset `index` of a profile that never saved replay settings.
 Preset defaultPreset(int index);
+// A preset added with the + button at `index`.
+Preset newPreset(int index);
 
 // One JSON object per OBS profile, stored under ids::profileSection/ids::profileKey.
 // Its keys are part of every existing installation; see preferences.cpp.
 namespace prefs {
 // Fills in defaults for a profile that has no saved replay settings yet.
 void applyDefaults(obs_data_t *data);
+// Number of presets a profile has: saved, or decided by whether it predates the count.
+int presetCount(obs_data_t *data);
+// Both read presetCount() entries.
 ReplaySettings readSettings(obs_data_t *data);
 Presets readPresets(obs_data_t *data);
+// `settings.presetFolders` must have one entry per preset.
 void write(obs_data_t *data, const ReplaySettings &settings, const Presets &presets);
 // Key holding the bindings of hotkey `index`, in HotkeyAction order.
 std::string hotkeyKey(int index);

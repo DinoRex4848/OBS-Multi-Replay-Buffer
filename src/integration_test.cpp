@@ -32,8 +32,10 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <algorithm>
 #include <functional>
+#include <vector>
 
 namespace replay {
 class IntegrationDriver : public QObject {
@@ -49,7 +51,8 @@ public:
     if (qEnvironmentVariable("REPLAY_TEST_FOLDERS") == "restore") {
       QTimer::singleShot(500, this, [this, output] {
         const auto base = qEnvironmentVariable("REPLAY_TEST_FOLDER_BASE");
-        testCheck(ctl.applied_.separateFolders && q(ctl.applied_.presetFolders[0]) == base + "/Preset 1 α" &&
+        testCheck(ctl.applied_.separateFolders && ctl.applied_.presetFolders.size() == 3 &&
+                      q(ctl.applied_.presetFolders[0]) == base + "/Preset 1 α" &&
                       q(ctl.applied_.presetFolders[1]) == base + "/Preset 2 β" &&
                       q(ctl.applied_.presetFolders[2]) == base + "/Preset 3 γ",
                   "preset folders survive restart");
@@ -65,18 +68,24 @@ public:
       });
       return;
     }
+    if (qEnvironmentVariableIsSet("REPLAY_TEST_PRESETS")) {
+      runPresetTest(output, qEnvironmentVariable("REPLAY_TEST_PRESETS") == "restore");
+      return;
+    }
+    // The other scenarios were written for three presets; new profiles start with two.
+    while (dock->presetCount() < 3) ctl.addPreset();
     dialog->separateFolders->setChecked(false);
     for (auto *field : dialog->presetFolders) field->clear();
     dialog->folder->setText(output);
-    dock->seconds[0]->setValue(2);
-    dock->seconds[1]->setValue(4);
-    dock->seconds[2]->setValue(6);
+    dock->rows[0].seconds->setValue(2);
+    dock->rows[1].seconds->setValue(4);
+    dock->rows[2].seconds->setValue(6);
     dialog->budget->setValue(0.25);
     dialog->separateEncoder->setChecked(!qEnvironmentVariableIsSet("REPLAY_TEST_SHARED"));
     if (qEnvironmentVariable("REPLAY_TEST_SHARED") == "long") {
-      dock->seconds[0]->setValue(60);
-      dock->seconds[1]->setValue(240);
-      dock->seconds[2]->setValue(600);
+      dock->rows[0].seconds->setValue(60);
+      dock->rows[1].seconds->setValue(240);
+      dock->rows[2].seconds->setValue(600);
       dialog->budget->setValue(16);
     }
     ctl.applySettings();
@@ -156,17 +165,19 @@ public:
     value["height"] = dock->height();
     value["minimum_width"] = dock->minimumSizeHint().width();
     value["minimum_height"] = dock->minimumSizeHint().height();
-    value["preset_seconds"] =
-        QJsonArray{dock->seconds[0]->value(), dock->seconds[1]->value(), dock->seconds[2]->value()};
-    value["save_tooltip"] = dock->saves[0]->toolTip();
+    QJsonArray presetSeconds;
+    for (const auto &row : dock->rows) presetSeconds.append(row.seconds->value());
+    value["preset_seconds"] = presetSeconds;
+    value["preset_count"] = dock->presetCount();
+    value["save_tooltip"] = dock->rows[0].save->toolTip();
     value["notice_tooltip"] = dock->state->toolTip();
     value["last_result_id"] = double(ctl.lastResultId_);
     bool contained = dock->rect().contains(dock->start->geometry()) && dock->rect().contains(dock->state->geometry()) &&
-                     dock->rect().contains(dock->settingsShortcut->geometry());
-    for (int i = 0; i < 3; ++i)
-      contained &= dock->rect().contains(dock->names[i]->geometry()) &&
-                   dock->rect().contains(dock->seconds[i]->geometry()) &&
-                   dock->rect().contains(dock->saves[i]->geometry());
+                     dock->rect().contains(dock->settingsShortcut->geometry()) &&
+                     dock->rect().contains(dock->add->geometry());
+    for (const auto &row : dock->rows)
+      contained &= dock->rect().contains(row.name->geometry()) && dock->rect().contains(row.seconds->geometry()) &&
+                   dock->rect().contains(row.save->geometry()) && dock->rect().contains(row.remove->geometry());
     value["controls_contained"] = contained;
     auto *main = static_cast<QMainWindow *>(obs_frontend_get_main_window());
     auto *controlsDock = main->findChild<QDockWidget *>(ids::dock);
@@ -254,8 +265,8 @@ public:
     at(12000, [=] { testNote("active Light theme"); });
     at(13000, [=] { obs_frontend_recording_stop(); });
     at(14000, [=] {
-      dock->saves[1]->click();
-      dock->saves[1]->click(); // Same-second collision, independently written.
+      dock->rows[1].save->click();
+      dock->rows[1].save->click(); // Same-second collision, independently written.
     });
     at(14250, [=] {
       ctl.stopBuffer();
@@ -287,8 +298,10 @@ public:
     else
       ctl.error(std::string("Settings test failed: ") + description);
   }
-  bool testPersistedSettings(const ReplaySettings &expected)
+  // `expected` may omit preset folders; blank ones are filled in for each preset.
+  bool testPersistedSettings(ReplaySettings expected)
   {
+    expected.presetFolders.resize(size_t(dock->presetCount()));
     auto *data = prefs::loadFromProfile(obs_frontend_get_profile_config());
     const bool match = prefs::readSettings(data) == expected;
     obs_data_release(data);
@@ -323,10 +336,10 @@ public:
     dialog->tabs->setCurrentIndex(0);
     testCheck(dialog->budget->value() == 0.5 && !dialog->separateEncoder->isChecked(),
               "switching tabs preserves pending settings");
-    dock->seconds[0]->setValue(3);
-    dock->seconds[0]->setValue(2);
-    dock->names[0]->setText("Saved preset");
-    QMetaObject::invokeMethod(dock->names[0], "editingFinished", Qt::DirectConnection);
+    dock->rows[0].seconds->setValue(3);
+    dock->rows[0].seconds->setValue(2);
+    dock->rows[0].name->setText("Saved preset");
+    QMetaObject::invokeMethod(dock->rows[0].name, "editingFinished", Qt::DirectConnection);
     obs_frontend_save();
     auto *bindings = obs_data_array_create();
     auto *binding = obs_data_create();
@@ -500,10 +513,10 @@ public:
     testCheck(QFile::setPermissions(readOnly, QFileDevice::ReadOwner | QFileDevice::ExeOwner),
               "make an unwritable scratch folder");
     ctl.settingsAction_->trigger();
-    for (int i = 0; i < 3; ++i) dock->seconds[i]->setValue(2);
-    dock->names[0]->setText("Short α");
-    dock->names[1]->setText("Medium β");
-    dock->names[2]->setText("Long γ");
+    for (int i = 0; i < 3; ++i) dock->rows[i].seconds->setValue(2);
+    dock->rows[0].name->setText("Short α");
+    dock->rows[1].name->setText("Medium β");
+    dock->rows[2].name->setText("Long γ");
     dialog->separateFolders->setChecked(true);
     dialog->presetFolders[0]->setText(a);
     dialog->separateFolders->setChecked(false);
@@ -564,9 +577,9 @@ public:
                     "draft paths cannot redirect an active session");
           dialog->grab().save(output + "/preset-folders-diagnostics.png");
         }
-        dock->saves[0]->click();
+        dock->rows[0].save->click();
         testSave(1);
-        dock->saves[2]->click();
+        dock->rows[2].save->click();
       });
       at(base + 5000, [=] {
         if (phase == 6 || phase == 7) {
@@ -608,6 +621,171 @@ public:
     });
   }
   void testSave(int preset) { obs_hotkey_trigger_routed_callback(ctl.hotkeys_->id(saveAction(preset)), true); }
+  // Hotkey helpers for the presets scenario: one key per preset hotkey.
+  void bindKey(int preset, const char *key)
+  {
+    auto *binding = obs_data_create();
+    obs_data_set_string(binding, "key", key);
+    auto *bindings = obs_data_array_create();
+    obs_data_array_push_back(bindings, binding);
+    obs_hotkey_load(ctl.hotkeys_->id(saveAction(preset)), bindings);
+    obs_data_array_release(bindings);
+    obs_data_release(binding);
+  }
+  QString boundKey(int preset)
+  {
+    auto *bindings = obs_hotkey_save(ctl.hotkeys_->id(saveAction(preset)));
+    QString key;
+    if (obs_data_array_count(bindings) == 1) {
+      auto *binding = obs_data_array_item(bindings, 0);
+      key = obs_data_get_string(binding, "key");
+      obs_data_release(binding);
+    } else if (obs_data_array_count(bindings) > 1) {
+      key = "several";
+    }
+    obs_data_array_release(bindings);
+    return key;
+  }
+  static QStringList registeredPresetHotkeys()
+  {
+    QStringList names;
+    obs_enum_hotkeys(
+        [](void *data, obs_hotkey_id, obs_hotkey_t *hotkey) {
+          const QString name = obs_hotkey_get_name(hotkey);
+          if (name.startsWith("MultiReplay.Preset")) static_cast<QStringList *>(data)->append(name);
+          return true;
+        },
+        &names);
+    names.sort();
+    return names;
+  }
+  static QStringList presetHotkeyNames(int count)
+  {
+    QStringList names;
+    for (int i = 0; i < count; ++i) names.append(ids::hotkeys[int(saveAction(i))]);
+    return names;
+  }
+  // Variable preset count. A fresh profile starts with two presets; the run adds up to
+  // eight, binds hotkeys, removes preset 3 and saves from the last preset into its own
+  // folder. "restore" checks the result after a restart.
+  void runPresetTest(const QString &output, bool restore)
+  {
+    const QString base = output + "/../preset-folders";
+    const auto folderFor = [base](int original) { return QDir::cleanPath(base + QString("/Preset %1").arg(original)); };
+    const auto nameFor = [](int original) { return QString("Preset %1 δ").arg(original); };
+    // Originals 1, 2 and 4–8 remain after preset 3 is removed.
+    const std::vector<int> kept = {1, 2, 4, 5, 6, 7, 8};
+    const auto keptPresetsMatch = [=] {
+      bool match = dock->presetCount() == int(kept.size()) && ctl.applied_.presetFolders.size() == kept.size() &&
+                   dialog->presetFolders.size() == kept.size();
+      for (size_t i = 0; match && i < kept.size(); ++i)
+        match = dock->rows[i].name->text() == nameFor(kept[i]) && dock->rows[i].seconds->value() == kept[i] + 1 &&
+                q(ctl.applied_.presetFolders[i]) == folderFor(kept[i]) &&
+                dialog->presetFolders[i]->text() == folderFor(kept[i]);
+      return match;
+    };
+    // Original preset 4 is bound to F17 and original 8 to F16; original 3's F15 is gone.
+    const auto keptBindingsMatch = [=] {
+      bool match = true;
+      for (int i = 0; i < int(kept.size()); ++i)
+        match &= boundKey(i) == (i == 2 ? "OBS_KEY_F17" : i == 6 ? "OBS_KEY_F16" : "");
+      return match;
+    };
+    if (restore) {
+      at(500, [=] {
+        testCheck(keptPresetsMatch(), "preset count, names, lengths and folders survive restart");
+        testCheck(keptBindingsMatch(), "moved hotkey bindings survive restart");
+        testCheck(registeredPresetHotkeys() == presetHotkeyNames(7), "restart registers one save hotkey per preset");
+        testCheck(dock->add->isEnabled() && dock->rows[0].remove->isEnabled(), "restored presets can be edited");
+        testNote("restored presets");
+        testFinish(output);
+      });
+      return;
+    }
+    at(500, [=] {
+      testCheck(dock->presetCount() == 2 && dock->rows[0].name->text() == "Replay 1" &&
+                    dock->rows[0].seconds->value() == 60 && dock->rows[1].name->text() == "Replay 2" &&
+                    dock->rows[1].seconds->value() == 240,
+                "a new profile starts with two presets");
+      testCheck(registeredPresetHotkeys() == presetHotkeyNames(2), "save hotkeys exist only for existing presets");
+      testCheck(dock->add->isEnabled() && dock->rows[0].remove->isEnabled() && dock->rows[1].remove->isEnabled(),
+                "presets can be added and removed while stopped");
+      testNote("fresh presets");
+      for (int i = 2; i < maxPresets; ++i) dock->add->click();
+      testCheck(dock->presetCount() == maxPresets && !dock->add->isEnabled(), "Add stops at eight presets");
+      testCheck(dock->rows[7].name->text() == "Replay 8" && dock->rows[7].seconds->value() == 60,
+                "added presets start at 60 seconds");
+      testCheck(registeredPresetHotkeys() == presetHotkeyNames(maxPresets), "each added preset gets a save hotkey");
+      testCheck(dialog->presetFolders.size() == size_t(maxPresets), "the settings window has a folder per preset");
+      dock->rows[0].seconds->setValue(maxPresetSeconds);
+      dock->grab().save(output + "/presets-longest.png"); // The longest length must stay readable.
+      for (int i = 0; i < maxPresets; ++i) {
+        dock->rows[i].seconds->setValue(i + 2);
+        dock->rows[i].name->setText(nameFor(i + 1));
+        QMetaObject::invokeMethod(dock->rows[i].name, "editingFinished", Qt::DirectConnection);
+        testCheck(QDir().mkpath(folderFor(i + 1)), "create scratch preset folder");
+      }
+      ctl.settingsAction_->trigger();
+      dialog->separateFolders->setChecked(true);
+      dialog->budget->setValue(0.25);
+      for (int i = 0; i < maxPresets; ++i) dialog->presetFolders[i]->setText(folderFor(i + 1));
+      testCheck(ctl.applySettings() && testPersistedSettings(ctl.applied_), "Apply persists eight preset folders");
+      bindKey(2, "OBS_KEY_F15");
+      bindKey(3, "OBS_KEY_F17");
+      bindKey(7, "OBS_KEY_F16");
+    });
+    at(1000, [=] {
+      testNote("eight presets");
+      dock->grab().save(output + "/presets-eight.png");
+      dialog->grab().save(output + "/presets-settings.png");
+      dialog->budget->setValue(0.5); // An unapplied edit that removing a preset must keep.
+      dock->rows[2].remove->click();
+      testCheck(keptPresetsMatch(), "removing a preset moves later names, lengths and folders up");
+      testCheck(keptBindingsMatch(), "hotkey bindings move with their presets");
+      testCheck(registeredPresetHotkeys() == presetHotkeyNames(7), "removing a preset removes the last save hotkey");
+      testCheck(dialog->budget->value() == 0.5 && ctl.draftSettings() != ctl.applied_,
+                "removing a preset keeps unapplied window edits");
+      dialog->settingsButtons->button(QDialogButtonBox::Cancel)->click();
+      auto *data = prefs::loadFromProfile(obs_frontend_get_profile_config());
+      auto *moved = obs_data_get_array(data, prefs::hotkeyKey(int(saveAction(6))).c_str());
+      testCheck(prefs::presetCount(data) == 7 && QString(obs_data_get_string(data, "name2")) == nameFor(4) &&
+                    !obs_data_has_user_value(data, "name7") && !obs_data_has_user_value(data, "hotkey9") && moved &&
+                    obs_data_array_count(moved) == 1,
+                "the profile stores seven presets and the moved binding");
+      obs_data_array_release(moved);
+      obs_data_release(data);
+      testNote("preset 3 removed");
+    });
+    at(1500, [=] {
+      ctl.startBuffer();
+      testCheck(ctl.capture_.status().collecting, "buffer starts with seven presets");
+    });
+    at(2000, [=] {
+      bool locked = !dock->add->isEnabled();
+      for (const auto &row : dock->rows)
+        locked &= !row.remove->isEnabled() && !row.seconds->isEnabled() && !row.name->isEnabled();
+      testCheck(locked, "presets cannot be added, removed or edited while buffering");
+      ctl.addPreset();
+      ctl.removePreset(0);
+      testCheck(dock->presetCount() == 7, "add and remove are refused while buffering");
+      testCheck(ctl.sessionFolders_.size() == 7 &&
+                    ctl.sessionFolders_[6].lexically_normal() == filePath(folderFor(8)).lexically_normal(),
+                "each preset has its own session folder");
+      testNote("presets locked");
+    });
+    at(11500, [=] {
+      testSave(6);
+      dock->rows[0].save->click();
+    });
+    at(12500, [=] { ctl.stopBuffer(); });
+    at(16500, [=] {
+      ctl.refresh();
+      testCheck(!ctl.capture_.status().draining && dock->add->isEnabled() && dock->rows[0].remove->isEnabled(),
+                "presets unlock after draining");
+      testNote("presets stopped");
+      testFinish(output);
+    });
+  }
   void testFinish(const QString &output)
   {
     auto status = ctl.capture_.status();

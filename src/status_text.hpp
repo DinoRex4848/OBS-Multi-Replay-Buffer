@@ -1,9 +1,9 @@
 #pragma once
 #include "constants.hpp"
-#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 // Text shown in the dock and the Diagnostics tab. Plain functions, so they are
 // unit-tested without OBS or Qt.
@@ -20,8 +20,9 @@ std::string saveTooltip(Time requested, Time available);
 std::string details(Time available, Time target, uint64_t memoryBytes, double budgetGb, size_t queued,
                     const std::string &writing);
 // Diagnostics lines naming where this session saves.
-std::string destinations(bool separateFolders, const std::array<std::string, presetCount> &names,
-                         const std::array<std::filesystem::path, presetCount> &folders);
+// `names` and `folders` have one entry per preset.
+std::string destinations(bool separateFolders, const std::vector<std::string> &names,
+                         const std::vector<std::filesystem::path> &folders);
 
 struct StatusInputs {
   bool paused = false, draining = false, collecting = false, degraded = false;

@@ -46,12 +46,14 @@ std::string details(Time available, Time target, uint64_t memoryBytes, double bu
          fixed(double(memoryBytes) / 1e9, 3) + " / " + fixed(budgetGb, 2) + " GB · queue " + std::to_string(queued) +
          (writing.empty() ? "" : "\nWriting " + writing);
 }
-std::string destinations(bool separateFolders, const std::array<std::string, presetCount> &names,
-                         const std::array<std::filesystem::path, presetCount> &folders)
+std::string destinations(bool separateFolders, const std::vector<std::string> &names,
+                         const std::vector<std::filesystem::path> &folders)
 {
+  if (folders.empty()) return "";
   if (!separateFolders) return "\nDestination: " + folders[0].u8string();
   std::string text = "\nDestinations:";
-  for (int i = 0; i < presetCount; ++i) text += "\n" + presetLabel(i, names[i]) + ": " + folders[i].u8string();
+  for (size_t i = 0; i < folders.size() && i < names.size(); ++i)
+    text += "\n" + presetLabel(int(i), names[i]) + ": " + folders[i].u8string();
   return text;
 }
 StatusText status(const StatusInputs &in)

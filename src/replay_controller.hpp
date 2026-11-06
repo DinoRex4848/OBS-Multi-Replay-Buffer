@@ -8,6 +8,7 @@
 #include <atomic>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 #ifdef REPLAY_INTEGRATION_TEST
 #include <deque>
 #endif
@@ -52,6 +53,10 @@ private:
   bool applySettings();
   bool persistSettings(const ReplaySettings &settings);
   void loadSettings();
+  // Dock presets: added and removed while stopped, saved immediately.
+  bool presetsEditable() const;
+  void addPreset();
+  void removePreset(int index);
   // Session.
   void startBuffer();
   void saveReplay(int preset, Time endpoint);
@@ -69,11 +74,12 @@ private:
   Capture capture_;
   std::unique_ptr<Hotkeys> hotkeys_;
   ReplaySettings applied_;
+  // loading_: widgets are being filled or presets rearranged; edits are not persisted yet.
   bool loading_ = false, closed_ = false, profilePending_ = false;
   std::atomic<bool> bindingSavePending_{false};
 
   // The running session: its destinations and the encoding it started with.
-  std::array<std::filesystem::path, presetCount> sessionFolders_{};
+  std::vector<std::filesystem::path> sessionFolders_; // One per preset.
   std::string fingerprint_;
   obs_video_info videoInfo_{};
   // Identity of the frontend encoder this session shares; compared, never dereferenced.

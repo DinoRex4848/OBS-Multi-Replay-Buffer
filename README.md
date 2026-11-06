@@ -8,14 +8,15 @@ Save several replay lengths from one encoded memory buffer in OBS Studio, with a
 **Experimental — installers under validation.** Version `0.1.2` provides simple Windows batch installers and a single-file Linux Flatpak installer. Native acceptance of the latest batch package is pending CI. Release automation prepares an unpublished draft for testing.
 
 <p align="center">
-  <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three preset save buttons, Start Buffering, and Settings" width="360">
+  <img src="docs/images/replay-dock.png" alt="Multi-Length Replay dock with three presets, each with Save and remove buttons, an add button, Start Buffering, and Settings" width="360">
 </p>
 
-*The dock with customized 2, 4, and 6 second presets. New profiles start with 60, 240, and 600 seconds.*
+*The dock with customized 2, 4, and 6 second presets. New profiles start with two presets, 60 and 240 seconds; add up to eight.*
 
 ## What you can do
 
 - Keep three editable replay lengths ready at once: one minute, four minutes, and ten minutes by default.
+- Use one to eight presets: add them with **+** and remove them with the trash button.
 - Save each preset with its own button or OBS hotkey, including while the dock is hidden.
 - Share OBS's recording encoders by default, or choose separate replay encoders when recording and replay need to run independently.
 - Preserve selected audio tracks and save directly to MKV without re-encoding the replay or first writing a longer recording.
@@ -51,7 +52,7 @@ After building and installing the plugin for your OBS installation:
 1. Choose your recording encoder, quality, audio tracks, and recording folder in OBS Settings.
 2. Open **Docks → Multi-Length Replay**. This is the plugin's current name inside OBS.
 3. Open **Tools → Multi-Buffer Settings**, or click **Settings** in the dock. New profiles use a **6 GB decimal** replay budget and share recording encoders. Apply your changes.
-4. Adjust the three preset names and durations, then click **Start Buffering**.
+4. Adjust the preset names and durations (click **+** to add more), then click **Start Buffering**.
 5. Click a preset's **Save** button, or assign its shortcut under **OBS Settings → Hotkeys**. Saves become available once playable history exists; early saves can be shorter than requested.
 6. Click **Stop Buffering** to stop collecting and finish accepted saves.
 

@@ -14,6 +14,7 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <algorithm>
 
 namespace replay {
@@ -45,22 +46,19 @@ ReplayController::ReplayController(QWidget *mainWindow) : QObject(mainWindow)
     else
       startBuffer();
   });
-  for (int i = 0; i < presetCount; ++i)
-    connect(dock_->saves[i], &QPushButton::clicked, this, [this, i] { saveReplay(i, clockNow()); });
+  // Preset edits save immediately; settings window edits wait for Apply/OK.
+  dock_->onSave = [this](int preset) { saveReplay(preset, clockNow()); };
+  dock_->onAdd = [this] { addPreset(); };
+  dock_->onRemove = [this](int preset) { removePreset(preset); };
+  dock_->onEdited = [this] { saveSettings(); };
+  dialog_->onPresetFolderEdited = [this] { updateSettingsState(); };
   connect(dock_->settingsShortcut, &QPushButton::clicked, this, [this] { showSettings(); });
   hotkeys_ = std::make_unique<Hotkeys>([this](HotkeyAction action, Time pressed) { onHotkey(action, pressed); });
   loadSettings();
-  // Preset edits save immediately; settings window edits wait for Apply/OK.
-  for (int i = 0; i < presetCount; ++i) {
-    connect(dock_->seconds[i], qOverload<int>(&QSpinBox::valueChanged), this, [this] { saveSettings(); });
-    connect(dock_->names[i], &QLineEdit::editingFinished, this, [this] { saveSettings(); });
-  }
   connect(dialog_->budget, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this] { updateSettingsState(); });
   connect(dialog_->folder, &QLineEdit::textChanged, this, [this] { updateSettingsState(); });
   connect(dialog_->separateEncoder, &QCheckBox::toggled, this, [this] { updateSettingsState(); });
   connect(dialog_->separateFolders, &QCheckBox::toggled, this, [this] { updateSettingsState(); });
-  for (auto *field : dialog_->presetFolders)
-    connect(field, &QLineEdit::textChanged, this, [this] { updateSettingsState(); });
   signal_handler_connect(obs_get_signal_handler(), "hotkey_bindings_changed", bindingsChanged, this);
   timer_ = new QTimer(this);
   timer_->setInterval(refreshIntervalMs);
@@ -158,11 +156,52 @@ void ReplayController::loadSettings()
   // Read back through the widgets, so the applied values have the fields' ranges and precision.
   dialog_->setDraft(prefs::readSettings(data));
   applied_ = draftSettings();
-  dock_->setPresets(prefs::readPresets(data));
+  const auto presets = prefs::readPresets(data);
+  dock_->setPresets(presets);
+  hotkeys_->setPresetCount(int(presets.size()));
   hotkeys_->load(data);
   obs_data_release(data);
   loading_ = false;
   resetDraft();
+}
+bool ReplayController::presetsEditable() const
+{
+  const auto status = capture_.status();
+  return !closed_ && !profilePending_ && !status.collecting && !status.draining;
+}
+void ReplayController::addPreset()
+{
+  const int count = dock_->presetCount();
+  if (!presetsEditable() || count >= maxPresets) return;
+  loading_ = true;
+  dock_->addPreset(newPreset(count));
+  applied_.presetFolders.resize(size_t(count) + 1);
+  dialog_->setPresetFolderCount(count + 1); // Keeps the window's unapplied edits.
+  hotkeys_->setPresetCount(count + 1);
+  loading_ = false;
+  saveSettings();
+  refresh();
+}
+// The presets after `index` move up, taking their folders and hotkey bindings with them.
+void ReplayController::removePreset(int index)
+{
+  const int count = dock_->presetCount();
+  if (!presetsEditable() || count <= minPresets || index < 0 || index >= count) return;
+  loading_ = true;
+  auto draft = draftSettings();
+  dock_->removePreset(index);
+  applied_.presetFolders.resize(size_t(count));
+  applied_.presetFolders.erase(applied_.presetFolders.begin() + index);
+  if (size_t(index) < draft.presetFolders.size()) draft.presetFolders.erase(draft.presetFolders.begin() + index);
+  dialog_->setDraft(draft); // Keeps the window's other unapplied edits.
+  hotkeys_->removePreset(index);
+  if (saveErrorPreset_ == index)
+    saveErrorPreset_ = -1;
+  else if (saveErrorPreset_ > index)
+    --saveErrorPreset_;
+  loading_ = false;
+  saveSettings();
+  refresh();
 }
 // OBS saves bindings it loads itself; these are stored with the replay settings,
 // so persist them when they change instead of waiting for the next exit.
@@ -216,7 +255,7 @@ void ReplayController::profileChanged()
   fingerprint_.clear();
   warning_.clear();
   dialog_->encoder->setText(inheritedEncodingText);
-  sessionFolders_.fill({});
+  sessionFolders_.clear();
   refresh();
 }
 void ReplayController::builtInStarted()
@@ -261,15 +300,16 @@ void ReplayController::startBuffer()
     options.shared = encoders.shared;
     options.trackNames = encoders.trackNames;
     options.filenames = encoders.filenames;
-    std::array<std::filesystem::path, presetCount> folders;
-    for (int i = 0; i < presetCount; ++i) {
-      const auto &configured = applied_.separateFolders ? applied_.presetFolders[i] : applied_.folder;
+    const auto presets = dock_->presets();
+    std::vector<std::filesystem::path> folders(presets.size());
+    for (size_t i = 0; i < presets.size(); ++i) {
+      const auto preset = i < applied_.presetFolders.size() ? applied_.presetFolders[i] : std::string();
+      const auto &configured = applied_.separateFolders ? preset : applied_.folder;
       folders[i] = q(configured).trimmed().isEmpty() ? encoders.folder : std::filesystem::u8path(configured);
     }
     options.folder = folders[0];
     if (!applied_.separateFolders && !std::filesystem::is_directory(options.folder))
       throw std::runtime_error("Replay destination must be an existing directory");
-    const auto presets = dock_->presets();
     int longest = 0;
     for (const auto &preset : presets) longest = std::max(longest, preset.seconds);
     options.longest = fromSeconds(longest);
@@ -281,8 +321,8 @@ void ReplayController::startBuffer()
     sharedVideo_ = encoders.shared ? encoders.video : nullptr;
     shareLost_ = false;
     if (encoders.shared && obs_frontend_recording_paused()) capture_.notePause(true);
-    std::array<std::string, presetCount> names;
-    for (int i = 0; i < presetCount; ++i) names[i] = presets[i].name;
+    std::vector<std::string> names;
+    for (const auto &preset : presets) names.push_back(preset.name);
     dialog_->encoder->setText(
         q(encoders.description + text::destinations(applied_.separateFolders, names, sessionFolders_)));
     error_.clear();
@@ -306,10 +346,16 @@ void ReplayController::stopBuffer()
 }
 void ReplayController::saveReplay(int preset, Time endpoint)
 {
-  const auto name = dock_->names[preset]->text();
+  // A hotkey press can be queued just before its preset is removed.
+  if (preset < 0 || preset >= dock_->presetCount()) return;
+  const auto &row = dock_->rows[size_t(preset)];
+  const auto name = row.name->text();
   const auto label = q(text::presetLabel(preset, utf8(name)) + ": ");
   try {
-    const auto id = capture_.save(fromSeconds(dock_->seconds[preset]->value()), endpoint, sessionFolders_[preset]);
+    // Presets cannot change during a session, so a buffering session has a folder for each.
+    const auto folder =
+        size_t(preset) < sessionFolders_.size() ? sessionFolders_[size_t(preset)] : std::filesystem::path();
+    const auto id = capture_.save(fromSeconds(row.seconds->value()), endpoint, folder);
     pendingPresets_[id] = {preset, label};
     feedback_ = name + " accepted";
     feedbackDetail_ = "Saving the requested replay.";
@@ -330,14 +376,18 @@ void ReplayController::refresh()
   dock_->start->setEnabled(!status.draining && !profilePending_);
   dock_->setActive(status.collecting);
   Time longest = 0;
-  for (int i = 0; i < presetCount; ++i) {
-    const Time requested = fromSeconds(dock_->seconds[i]->value());
+  const bool editable = presetsEditable();
+  const int count = dock_->presetCount();
+  for (const auto &row : dock_->rows) {
+    const Time requested = fromSeconds(row.seconds->value());
     longest = std::max(longest, requested);
-    dock_->seconds[i]->setEnabled(!busy);
-    dock_->names[i]->setEnabled(!busy);
-    dock_->saves[i]->setToolTip(q(text::saveTooltip(requested, status.available)));
-    dock_->saves[i]->setEnabled(status.collecting && status.available > 0);
+    row.seconds->setEnabled(!busy);
+    row.name->setEnabled(!busy);
+    row.save->setToolTip(q(text::saveTooltip(requested, status.available)));
+    row.save->setEnabled(status.collecting && status.available > 0);
+    row.remove->setEnabled(editable && count > minPresets);
   }
+  dock_->add->setEnabled(editable && count < maxPresets);
   updateSettingsState();
   if (!busy) sharedVideo_ = nullptr;
   dialog_->details->setText(

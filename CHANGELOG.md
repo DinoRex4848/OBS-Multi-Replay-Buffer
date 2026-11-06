@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Choose between one and eight replay presets. Click **+** in the dock to add one (it starts at 60 seconds) and the trash button to remove one; the presets below move up with their folders and hotkeys. Presets can be changed only while buffering is stopped.
+- New profiles start with two presets, 60 and 240 seconds. Profiles from earlier versions keep their three presets, names, lengths, folders and hotkeys.
+- Save hotkeys `MultiReplay.Preset4` to `Preset8`. OBS's Hotkeys settings list one save hotkey per existing preset.
+
+### Cleanup
+
 Internal cleanup with no intended change to the plugin's behavior, settings or installers.
 
 - Split the 1,600-line plugin source into a module entry point, a controller, the dock and settings views, and settings, hotkey and status-text modules. The UI test driver is now a separate file built only for tests.

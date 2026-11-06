@@ -21,11 +21,17 @@ Opening Settings again brings back the same window and preserves its selected ta
 
 1. Configure OBS's recording encoder, quality, audio tracks, and recording folder. The plugin inherits supported recording settings.
 2. Stop OBS's built-in replay buffer. Both replay buffers cannot run together.
-3. Set your preset names and lengths in the replay dock. The three initial lengths are **60, 240, and 600 seconds**. Durations can be edited from 1 to 86,400 seconds; the RAM budget determines how much history can actually be retained.
+3. Set your preset names and lengths in the replay dock. New profiles start with two presets of **60 and 240 seconds**; profiles from earlier versions keep their three. Durations can be edited from 1 to 86,400 seconds; the RAM budget determines how much history can actually be retained.
 4. Open Multi-Buffer Settings, choose your preferences, and click **Apply** or **OK**.
 5. Click **Start Buffering**. The button uses OBS's active replay-button styling while the session is active.
 6. Wait for playable history, then click **Save** beside the desired preset. Hover over Save to see whether the available duration is full or partial.
 7. Click **Stop Buffering** when finished. New saves are refused while accepted requests finish; Start becomes available after draining.
+
+### Adding and removing presets
+
+Click **+** above the preset rows to add a preset, up to eight. A new preset is named "Replay N" and starts at 60 seconds. Click the trash button on a row to remove that preset; the presets below it move up, keeping their names, lengths, folders and hotkeys. At least one preset always remains.
+
+All presets share one buffer, so adding presets does not use more memory. The buffer keeps enough history for the longest preset, up to the RAM budget. Presets can be added, removed or edited only while buffering is stopped.
 
 Buffering starts manually after OBS opens. A start hotkey uses the last applied settings, including when the settings window contains unapplied edits.
 
@@ -39,13 +45,14 @@ Assign keys under **OBS Settings → Hotkeys**. They ship unassigned.
 | Stop buffering | Multi-Length Replay: Stop Buffering | `MultiReplay.Stop` |
 | Save preset 1 | Multi-Length Replay: Save Replay 1 | `MultiReplay.Preset1` |
 | Save preset 2 | Multi-Length Replay: Save Replay 2 | `MultiReplay.Preset2` |
-| Save preset 3 | Multi-Length Replay: Save Replay 3 | `MultiReplay.Preset3` |
+| … | … | … |
+| Save preset 8 | Multi-Length Replay: Save Replay 8 | `MultiReplay.Preset8` |
 
-Renaming a preset or changing its duration keeps that preset's hotkey. Settings and bindings are stored per OBS profile. Unfocused desktop hotkeys, particularly on Wayland, need hands-on validation; routed hotkey tests do not prove that a desktop will deliver every key while another application is focused.
+Save hotkeys are listed only for presets that exist. Renaming a preset or changing its duration keeps that preset's hotkey. Removing a preset moves the hotkeys of the presets below it up with them; a newly added preset starts unassigned. Settings and bindings are stored per OBS profile. Unfocused desktop hotkeys, particularly on Wayland, need hands-on validation; routed hotkey tests do not prove that a desktop will deliver every key while another application is focused.
 
 ## Encoder modes and recording
 
-One replay video encoder serves all three presets in either mode.
+One replay video encoder serves all presets in either mode.
 
 | Setting | Behavior | Trade-off |
 | --- | --- | --- |
@@ -64,9 +71,9 @@ Advanced Standard Output has the broadest support. Simple Output mappings cover 
 
 ## Save destinations
 
-Leave **Save folder** blank to use OBS's recording folder, or select one shared folder for all three presets.
+Leave **Save folder** blank to use OBS's recording folder, or select one shared folder for all presets.
 
-Enable **Use separate folders for each preset** to choose three destinations independently. Each blank preset field uses **OBS's recording folder**, even when a custom shared folder is saved. Renaming or changing a preset's duration keeps its folder assignment. Switching folder modes remembers both sets of paths.
+Enable **Use separate folders for each preset** to choose a destination for each preset. Each blank preset field uses **OBS's recording folder**, even when a custom shared folder is saved. Renaming or changing a preset's duration keeps its folder assignment, and removing a preset moves the folders of the presets below it up with them. Switching folder modes remembers both sets of paths.
 
 Destinations are fixed when buffering starts. Stop buffering, apply changes, and start again to use different destinations. Flatpak OBS must have permission to access the chosen folders inside its sandbox.
 

@@ -13,7 +13,7 @@ Time clockNow();
 void registerReplayOutput();
 struct Options {
   uint64_t budget = defaultBudgetBytes;
-  Time longest = fromSeconds(defaultPresetSeconds[presetCount - 1]);
+  Time longest = fromSeconds(slotDefaultSeconds(defaultPresetCount - 1)); // Set from the presets at start.
   std::filesystem::path folder;
   FilenameOptions filenames;
   // The encoders belong to the OBS frontend's recording output. Pausing that

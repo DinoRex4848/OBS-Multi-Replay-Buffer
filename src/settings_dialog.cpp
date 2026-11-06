@@ -93,19 +93,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
                               "only when separate folders are turned off.");
   settingsLayout->addWidget(separateFolders);
   presetFoldersView = new QWidget(settingsPage);
-  auto *presetFoldersLayout = new QVBoxLayout(presetFoldersView);
-  presetFoldersLayout->setContentsMargins(0, 0, 0, 0);
+  presetFoldersLayout_ = new QVBoxLayout(presetFoldersView);
+  presetFoldersLayout_->setContentsMargins(0, 0, 0, 0);
   auto *folderHint = new QLabel("Leave a preset folder blank to use OBS's recording folder.", presetFoldersView);
   folderHint->setWordWrap(true);
-  presetFoldersLayout->addWidget(folderHint);
-  for (int i = 0; i < presetCount; ++i) {
-    presetFolderLabels[i] = new QLabel(presetFoldersView);
-    presetFolderLabels[i]->setTextFormat(Qt::PlainText);
-    presetFolderLabels[i]->setWordWrap(true);
-    presetFoldersLayout->addWidget(presetFolderLabels[i]);
-    presetFoldersLayout->addWidget(folderRow(presetFoldersView, presetFolders[i], presetBrowse[i], this,
-                                             "Replay preset " + QString::number(i + 1) + " destination"));
-  }
+  presetFoldersLayout_->addWidget(folderHint);
+  setPresetFolderCount(defaultPresetCount);
   settingsLayout->addWidget(presetFoldersView);
   separateEncoder = new QCheckBox("Use separate replay encoder", settingsPage);
   separateEncoder->setToolTip(
@@ -126,6 +119,38 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
   diagnosticsLayout->addStretch();
   settingsLayout->addStretch();
 }
+void SettingsDialog::setPresetFolderCount(int count)
+{
+  while (int(presetFolders.size()) > count) {
+    delete presetFolderRows.back();
+    presetFolderRows.pop_back();
+    presetFolderLabels.pop_back();
+    presetFolders.pop_back();
+    presetBrowse.pop_back();
+  }
+  while (int(presetFolders.size()) < count) {
+    const int index = int(presetFolders.size());
+    auto *row = new QWidget(presetFoldersView);
+    auto *rowLayout = new QVBoxLayout(row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    auto *label = new QLabel(row);
+    label->setTextFormat(Qt::PlainText);
+    label->setWordWrap(true);
+    rowLayout->addWidget(label);
+    QLineEdit *field = nullptr;
+    QPushButton *button = nullptr;
+    rowLayout->addWidget(
+        folderRow(row, field, button, this, "Replay preset " + QString::number(index + 1) + " destination"));
+    connect(field, &QLineEdit::textChanged, this, [this] {
+      if (onPresetFolderEdited) onPresetFolderEdited();
+    });
+    presetFoldersLayout_->addWidget(row);
+    presetFolderRows.push_back(row);
+    presetFolderLabels.push_back(label);
+    presetFolders.push_back(field);
+    presetBrowse.push_back(button);
+  }
+}
 ReplaySettings SettingsDialog::draft() const
 {
   ReplaySettings settings;
@@ -133,7 +158,8 @@ ReplaySettings SettingsDialog::draft() const
   settings.folder = utf8(folder->text());
   settings.shareEncoder = !separateEncoder->isChecked();
   settings.separateFolders = separateFolders->isChecked();
-  for (int i = 0; i < presetCount; ++i) settings.presetFolders[i] = utf8(presetFolders[i]->text());
+  settings.presetFolders.clear();
+  for (const auto *field : presetFolders) settings.presetFolders.push_back(utf8(field->text()));
   return settings;
 }
 void SettingsDialog::setDraft(const ReplaySettings &settings)
@@ -144,7 +170,8 @@ void SettingsDialog::setDraft(const ReplaySettings &settings)
   folder->setText(q(settings.folder));
   separateEncoder->setChecked(!settings.shareEncoder);
   separateFolders->setChecked(settings.separateFolders);
-  for (int i = 0; i < presetCount; ++i) {
+  setPresetFolderCount(int(settings.presetFolders.size()));
+  for (size_t i = 0; i < presetFolders.size(); ++i) {
     const QSignalBlocker block(presetFolders[i]);
     presetFolders[i]->setText(q(settings.presetFolders[i]));
   }
@@ -157,11 +184,12 @@ void SettingsDialog::updateState(bool editable, bool busy, bool dirty, bool open
   browse->setEnabled(editable && !separate);
   separateFolders->setEnabled(editable);
   presetFoldersView->setVisible(separate);
-  for (int i = 0; i < presetCount; ++i) {
+  setPresetFolderCount(int(presets.size()));
+  for (size_t i = 0; i < presetFolders.size(); ++i) {
     presetFolders[i]->setEnabled(editable && separate);
     presetBrowse[i]->setEnabled(editable && separate);
     presetFolderLabels[i]->setText(
-        QString("Preset %1 — %2 (%3 s)").arg(i + 1).arg(q(presets[i].name)).arg(presets[i].seconds));
+        QString("Preset %1 — %2 (%3 s)").arg(int(i) + 1).arg(q(presets[i].name)).arg(presets[i].seconds));
   }
   separateEncoder->setEnabled(editable);
   settingsLock->setVisible(busy);

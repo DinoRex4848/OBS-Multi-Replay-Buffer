@@ -27,11 +27,20 @@ int main()
           "Available 3.0 s / target 600.0 s\nReplay memory 1.235 / 6.00 GB · queue 2");
     CHECK(text::details(0, 0, 0, 0.25, 1, "Replay 60s") ==
           "Available 0.0 s / target 0.0 s\nReplay memory 0.000 / 0.25 GB · queue 1\nWriting Replay 60s");
-    const std::array<std::string, presetCount> names = {"A", "B", "C"};
-    const std::array<std::filesystem::path, presetCount> folders = {"/a", "/b", "/c"};
+    const std::vector<std::string> names = {"A", "B", "C"};
+    const std::vector<std::filesystem::path> folders = {"/a", "/b", "/c"};
     CHECK(text::destinations(false, names, folders) == "\nDestination: /a");
     CHECK(text::destinations(true, names, folders) ==
           "\nDestinations:\nPreset 1 — A: /a\nPreset 2 — B: /b\nPreset 3 — C: /c");
+    CHECK(text::destinations(true, {"A", "B"}, {"/a", "/b"}) == "\nDestinations:\nPreset 1 — A: /a\nPreset 2 — B: /b");
+    std::vector<std::string> eightNames;
+    std::vector<std::filesystem::path> eightFolders;
+    for (int i = 1; i <= 8; ++i) {
+      eightNames.push_back("N" + std::to_string(i));
+      eightFolders.push_back("/f" + std::to_string(i));
+    }
+    const auto eight = text::destinations(true, eightNames, eightFolders);
+    CHECK(eight.find("\nPreset 8 — N8: /f8") != std::string::npos && eight.find("Preset 9") == std::string::npos);
 
     text::StatusInputs in;
     auto out = text::status(in);

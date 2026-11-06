@@ -86,7 +86,8 @@ void obs_module_post_load(void)
   controller = content;
   obs_frontend_add_event_callback(frontendEvent, nullptr);
   obs_frontend_add_save_callback(saveCallback, nullptr);
-  blog(LOG_INFO, "[multi-replay] Replay dock and Tools settings ready; manual startup, defaults 60/240/600 seconds");
+  blog(LOG_INFO, "[multi-replay] Replay dock and Tools settings ready; manual startup, new profiles start with 60/240 "
+                 "second presets");
 }
 void obs_module_unload(void)
 {
